@@ -91,21 +91,23 @@ y = road.y(road_ind) - tyre.y_centre;
 theta = mod(atan2(y , x) , 2*pi);
 tyre_ind = interp1(tyre.theta , [1:length(tyre.theta)], theta, "nearest");
 end
+function road_inds = getRoadIndexfromTyreIndex(tyre , road , tyre_ind)
+    x = tyre.x_centre + tyre.r_free(tyre_ind).*cos(tyre.theta(tyre_ind));
+    road_inds = interp1(road.x , (1:length(road.x)), x , "nearest");
+end
 
 function polar_coordinates = road2tyreTF(tyre, road_point_x, road_point_y)
 polar_coordinates(1 ,1) = sqrt((road_point_x - tyre.x_centre)^2 + (road_point_y - tyre.y_centre)^2);
 polar_coordinates(2 ,1) = mod(atan2(road_point_y - tyre.y_centre , road_point_x - tyre.x_centre), 2*pi);
 end
 
-function polar_derivative = road2tyreDerivativeTF(tyre, road, road_point_ind, direction)
+function polar_derivative = road2tyreDerivativeTF(tyre, road, road_point_ind)
 x = road.x(road_point_ind) -tyre.x_centre;
 y = road.y(road_point_ind) - tyre.y_centre;
 R = sqrt(x^2 + y^2);
 theta = atan2(y , x);
 y_prime = road.gradient(road_point_ind);
-polar_derivative = direction * (x + y*y_prime)/(y_prime * cos(theta) - sin(theta));
-%     polar_derivative = (1/R)*(x^2 - y^2 * y_prime^2 )/(y_prime);
-%     polar_derivative = (x + y*y_prime)/(x*y_prime - y);
+polar_derivative = (x + y*y_prime)/(y_prime * cos(theta) - sin(theta));
 end
 
 
@@ -139,8 +141,8 @@ road_ind_fore = road.contact_boundary_inds(contact_ind , 2);
 road_ind_aft = road.contact_boundary_inds(contact_ind , 1);
 fore_point_polar = road2tyreTF(tyre , road.x(road_ind_fore),road.y(road_ind_fore));
 aft_point_polar =  road2tyreTF(tyre , road.x(road_ind_aft),road.y(road_ind_aft));
-initial_conditions.fore.w_prime = -polarDerivative(road.x(road_ind_fore) , road.y(road_ind_fore) , road.gradient(road_ind_fore));
-initial_conditions.aft.w_prime = -polarDerivative(road.x(road_ind_aft) , road.y(road_ind_aft) , -road.gradient(road_ind_aft));
+initial_conditions.fore.w_prime = -road2tyreDerivativeTF(tyre ,road , road_ind_fore);
+initial_conditions.aft.w_prime = road2tyreDerivativeTF(tyre , road, road_ind_aft);
 initial_conditions.fore.w =   tyre.free_radius - fore_point_polar(1);
 initial_conditions.aft.w =   tyre.free_radius - aft_point_polar(1);
 end
@@ -241,13 +243,17 @@ theta = (0:dTheta:pi/2)';
 deflection_profile = exp(-constants.beta * theta).*(initial_conditions.fore.w*cos(constants.beta*theta) +...
     (initial_conditions.fore.w_prime/constants.beta + initial_conditions.fore.w) *sin(constants.beta*theta));
 shifted_inds = mod((0:(length(deflection_profile)-1))'+ tyre.contact_boundary_inds(contact_ind , 2) -1 , length(tyre.theta)) + 1;
-tyre.r_deformed(shifted_inds) = tyre.r_deformed(shifted_inds) - deflection_profile;
+tyre.r_deformed(shifted_inds) = tyre.r_free(shifted_inds) - deflection_profile;
 %aft
-deflection_profile = exp(-constants.beta * theta).*(initial_conditions.fore.w*cos(constants.beta*theta) +...
-    (initial_conditions.fore.w_prime/constants.beta + initial_conditions.fore.w) *sin(constants.beta*theta));
+deflection_profile = exp(-constants.beta * theta).*(initial_conditions.aft.w*cos(constants.beta*theta) +...
+    (initial_conditions.aft.w_prime/constants.beta + initial_conditions.aft.w) *sin(constants.beta*theta));
 shifted_inds = mod(-(0:(length(deflection_profile)-1))' + tyre.contact_boundary_inds(contact_ind , 1) -1 , length(tyre.theta)) + 1;
-tyre.r_deformed(shifted_inds) = tyre.r_deformed(shifted_inds) - deflection_profile;
-
+tyre.r_deformed(shifted_inds) = tyre.r_free(shifted_inds) - deflection_profile;
+% TODO 
+% make it go round
+tyre_contact_inds = (tyre.contact_boundary_inds(contact_ind , 1):tyre.contact_boundary_inds(contact_ind , 2))';
+road_contact_inds = getRoadIndexfromTyreIndex(tyre , road, tyre_contact_inds);
+tyre.r_deformed(tyre_contact_inds) = sqrt((road.x(road_contact_inds) - tyre.x_centre).^2 + (road.y(road_contact_inds) - tyre.y_centre).^2);
 end
 
 % plotting functions
