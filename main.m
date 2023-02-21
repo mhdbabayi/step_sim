@@ -2,8 +2,6 @@ clear
 clc
 close all
 tyre_sim_structs
-background_plots = [];
-frame_plots = [];
 road_s = createRoad(road_s, constants_s);
 main_fig= figure();
 subplot(2 , 1 , 1)
@@ -11,32 +9,46 @@ xlim([road_s.x(1) , road_s.x(end)]);
 ylim([tyre_s.y_centre - tyre_s.free_radius*1.1 , tyre_s.y_centre + tyre_s.free_radius*1.2]);
 hold on
 daspect([1 1 1])
-background_plots = drawRoad(road_s, background_plots);
+plot_handles_s = drawRoad(road_s, plot_handles);
 % vidRecorder = VideoWriter("beamVid");
 % vidRecorder.open();
+clear road tyre constants
 while tyre_s.x_centre < (constants_s.step_position + constants_s.tyre_radius)
+
+    subplot(2 , 1 , 1);
+    plot_handles_s = drawUndeformedTyre(tyre_s, plot_handles_s);
     try
-        frame_plots = drawUndeformedTyre(tyre_s, frame_plots);
-        [tyre_s, road_s] = tyreRoadContact(tyre_s , road_s , constants_s);
-        frame_plots = drawPenetrations(tyre_s, road_s , frame_plots);
-        direction = -1;
-        r = getDeformedTyre(tyre_s , road_s, 1 ,direction , constants_s);
-        plot_range = mod([tyre_s.contact_boundary_inds(1 , 1):direction:tyre_s.contact_boundary_inds(1 , 1) + 100*direction]-1, 360) + 1;
-        frame_plots(end+1) = plot(tyre_s.x_centre + r(plot_range).*cos(tyre_s.theta(plot_range)) , tyre_s.y_centre+ r(plot_range).*sin(tyre_s.theta(plot_range)),LineWidth=3);
-        direction = 1;
-        r = getDeformedTyre(tyre_s , road_s, 1 ,direction , constants_s);
-        plot_range = mod([tyre_s.contact_boundary_inds(1 , 2):direction:tyre_s.contact_boundary_inds(1 , 2) + 100*direction] -1, 360) + 1;
-        frame_plots(end+1) = plot(tyre_s.x_centre + r(plot_range).*cos(tyre_s.theta(plot_range)) , tyre_s.y_centre+ r(plot_range).*sin(tyre_s.theta(plot_range)),LineWidth=3);
-%         vidRecorder.writeVideo(getframe);
-        pause();
-        delete(frame_plots);
-        frame_plots = [];
-    catch
+    [tyre_s, road_s] = tyreRoadContact(tyre_s , road_s , constants_s);
+    catch me
+        disp(me)
+        tyre_s.x_centre = tyre_s.x_centre + 0.01;
+        continue;
     end
+    plot_handles_s = drawPenetrations(tyre_s, road_s , plot_handles_s);
+    tyre_s = getDeformedProfile(tyre_s ,road_s ,constants_s , length(tyre_s.contact_centre_inds));
+    plot_handles_s = drawDeformedTyre(tyre_s , plot_handles_s);
+    %         direction = -1;
+    %         r = getDeformedTyre(tyre_s , road_s, 1 ,direction , constants_s);
+    %         tyre_deflections = r  - tyre_s.r_free;
+    %         plot_range = mod([tyre_s.contact_boundary_inds(1 , 1):direction:tyre_s.contact_boundary_inds(1 , 1) + 100*direction]-1, 360) + 1;
+    %         plot_handles_s.frame(end+1) = plot(tyre_s.x_centre + r(plot_range).*cos(tyre_s.theta(plot_range)) , tyre_s.y_centre+ r(plot_range).*sin(tyre_s.theta(plot_range)),LineWidth=3);
+    %         direction = 1;
+    %         r = getDeformedTyre(tyre_s , road_s, 1 ,direction , constants_s);
+    %         tyre_deflections = tyre_deflections + r - tyre_s.r_free;
+    %         plot_range = mod([tyre_s.contact_boundary_inds(1 , 2):direction:tyre_s.contact_boundary_inds(1 , 2) + 100*direction] -1, 360) + 1;
+    %         plot_handles_s.frame(end+1)= plot(tyre_s.x_centre + r(plot_range).*cos(tyre_s.theta(plot_range)) , tyre_s.y_centre+ r(plot_range).*sin(tyre_s.theta(plot_range)),LineWidth=3);
+    subplot(2 , 1 , 2)
+%     plot_handles_s.frame(end+1) = plot(rad2deg(tyre_s.theta) , tyre_deflections);
+%     hold on
+%     plot_handles_s.frame(end+1) = plot(rad2deg(tyre_s.theta(tyre_s.contact_boundary_inds)) , tyre_deflections(tyre_s.contact_boundary_inds) , "r*", MarkerSize=5);
+    %
+    % vidRecorder.writeVideo(getframe);
+    pause();
+    delete(plot_handles_s.frame);
+    plot_handles_s.frame = [];
     tyre_s.x_centre = tyre_s.x_centre + 0.01;
 end
 % vidRecorder.close();
-clear road tyre constants
 %% functions
 % main function
 function [tyre , road] = tyreRoadContact(tyre ,road, constants)
@@ -120,36 +132,19 @@ global_coordinates(1 , 1) = tyre.x_centre + r*cos(theta);
 global_coordinates(2 , 1) = tyre.y_centre + r*sin(theta);
 end
 
-function deformed_tyre = getDeformedTyre(tyre, road, contact_ind, direction, constants)
-deformed_tyre = tyre.r_free;
-% direction 1 means fore and direction -1 means aft
-if direction == 1
-    current_ind_tyre = tyre.contact_boundary_inds(contact_ind , 2);
-    current_ind_road = road.contact_boundary_inds(contact_ind , 2);
-elseif direction == -1
-    current_ind_tyre = tyre.contact_boundary_inds(contact_ind , 1);
-    current_ind_road = road.contact_boundary_inds(contact_ind , 1);
-else
-    error("direction should 1 or -1");
+function initial_conditions = getInitialConditions(tyre, road , contact_ind)
+initial_conditions.fore = [];
+initial_conditions.aft = [];
+road_ind_fore = road.contact_boundary_inds(contact_ind , 2);
+road_ind_aft = road.contact_boundary_inds(contact_ind , 1);
+fore_point_polar = road2tyreTF(tyre , road.x(road_ind_fore),road.y(road_ind_fore));
+aft_point_polar =  road2tyreTF(tyre , road.x(road_ind_aft),road.y(road_ind_aft));
+initial_conditions.fore.w_prime = -polarDerivative(road.x(road_ind_fore) , road.y(road_ind_fore) , road.gradient(road_ind_fore));
+initial_conditions.aft.w_prime = -polarDerivative(road.x(road_ind_aft) , road.y(road_ind_aft) , -road.gradient(road_ind_aft));
+initial_conditions.fore.w =   tyre.free_radius - fore_point_polar(1);
+initial_conditions.aft.w =   tyre.free_radius - aft_point_polar(1);
 end
-num_nodes = length(tyre.theta);
-dTheta = 2*pi/num_nodes;
-current_theta = dTheta;
-initial_point_polar = road2tyreTF(tyre, road.x(current_ind_road), ...
-    road.y(current_ind_road));
-initial_penetration =  tyre.free_radius - initial_point_polar(1) ;
-%     initial_theta =  pi/2 - initial_point_polar(2) + direction * (atan(road.gradient(current_ind_road)));
-initial_theta = -road2tyreDerivativeTF(tyre, road, current_ind_road, direction);
-deformed_tyre(current_ind_tyre) = initial_point_polar(1);
-current_ind_tyre = current_ind_tyre + direction;
-while(exp(-constants.beta*current_theta) > 0.01)
-    deformed_tyre(mod(current_ind_tyre -1 , num_nodes) + 1) = tyre.free_radius -...
-        exp(-constants.beta * current_theta)*(initial_penetration*cos(constants.beta*current_theta) +...
-        (initial_theta/constants.beta + initial_penetration) *sin(constants.beta*current_theta));...
-        current_ind_tyre = current_ind_tyre + direction;
-    current_theta = current_theta + dTheta;
-end
-end
+
 % State transition functions, functions with in-place write that change
 % objects states
 
@@ -210,6 +205,7 @@ end
 end
 
 function [tyre, road] = getContactBoundaries(tyre, road, constants)
+
 % TODO, implement the actual separation condition here later, for now
 % it only uses the different between derivatives.
 for i = 1:length(road.contact_centre_inds)
@@ -237,6 +233,23 @@ for i = 1:length(road.contact_centre_inds)
 end
 end
 
+function tyre = getDeformedProfile(tyre, road, constants , contact_ind)
+initial_conditions = getInitialConditions(tyre, road, contact_ind);
+dTheta = 2*pi/(length(tyre.theta));
+theta = (0:dTheta:pi/2)';
+% fore
+deflection_profile = exp(-constants.beta * theta).*(initial_conditions.fore.w*cos(constants.beta*theta) +...
+    (initial_conditions.fore.w_prime/constants.beta + initial_conditions.fore.w) *sin(constants.beta*theta));
+shifted_inds = mod((0:(length(deflection_profile)-1))'+ tyre.contact_boundary_inds(contact_ind , 2) -1 , length(tyre.theta)) + 1;
+tyre.r_deformed(shifted_inds) = tyre.r_deformed(shifted_inds) - deflection_profile;
+%aft
+deflection_profile = exp(-constants.beta * theta).*(initial_conditions.fore.w*cos(constants.beta*theta) +...
+    (initial_conditions.fore.w_prime/constants.beta + initial_conditions.fore.w) *sin(constants.beta*theta));
+shifted_inds = mod(-(0:(length(deflection_profile)-1))' + tyre.contact_boundary_inds(contact_ind , 1) -1 , length(tyre.theta)) + 1;
+tyre.r_deformed(shifted_inds) = tyre.r_deformed(shifted_inds) - deflection_profile;
+
+end
+
 % plotting functions
 
 function plot_handles = drawRoad(road, plot_handles, fig_handle)
@@ -245,7 +258,7 @@ if nargin == 2
 end
 figure(fig_handle);
 hold on
-plot_handles(end+1) = plot(road.x, road.y , 'black');
+plot_handles.static(end+1) = plot(road.x, road.y , 'black');
 end
 
 function plot_handles = drawUndeformedTyre(tyre,plot_handles, fig_handle)
@@ -257,8 +270,21 @@ y = tyre.free_radius* sin(tyre.theta) + tyre.y_centre;
 figure(fig_handle);
 x = [x;x(1)];
 y = [y;(1)];
-plot_handles(end+1) = plot(x , y , 'r.-', MarkerSize=10);
+plot_handles.frame(end+1) = plot(x , y , 'r.-', MarkerSize=3);
 end
+
+function plot_handles = drawDeformedTyre(tyre,plot_handles, fig_handle)
+if nargin == 2
+    fig_handle = gcf();
+end
+x  = tyre.r_deformed.*cos(tyre.theta) + tyre.x_centre;
+y = tyre.r_deformed.* sin(tyre.theta) + tyre.y_centre;
+figure(fig_handle);
+x = [x;x(1)];
+y = [y;(1)];
+plot_handles.frame(end+1) = plot(x , y , 'm.-', MarkerSize=5);
+end
+
 
 function plot_handles = drawPenetrations(tyre, road , plot_handles ,fig_handle)
 if nargin == 3
@@ -267,18 +293,18 @@ end
 figure(fig_handle);
 hold on
 for i = 1:length(tyre.penetration_inds(: , 1))
-    plot_handles(end+1) = plot(road.x(road.penetration_inds(i , 1) : road.penetration_inds(i, 2)),...
+    plot_handles.frame(end+1) = plot(road.x(road.penetration_inds(i , 1) : road.penetration_inds(i, 2)),...
         road.y(road.penetration_inds(i , 1):road.penetration_inds(i , 2)),".", MarkerSize=5);
-    plot_handles(end+1) =plot(road.x(road.contact_centre_inds(i)), road.y(road.contact_centre_inds(i)), "ro", MarkerSize=10);
-    plot_handles(end+1) = plot(tyre.x_centre + tyre.free_radius*cos(tyre.theta(tyre.penetration_inds(i , 1))), ...
+    plot_handles.frame(end+1) =plot(road.x(road.contact_centre_inds(i)), road.y(road.contact_centre_inds(i)), "ro", MarkerSize=10);
+    plot_handles.frame(end+1) = plot(tyre.x_centre + tyre.free_radius*cos(tyre.theta(tyre.penetration_inds(i , 1))), ...
         tyre.y_centre + tyre.free_radius*sin(tyre.theta(tyre.penetration_inds(i , 1))), "o", MarkerSize=10);
-    plot_handles(end+1) = plot(tyre.x_centre + tyre.free_radius*cos(tyre.theta(tyre.penetration_inds(i , 2))), ...
+    plot_handles.frame(end+1) = plot(tyre.x_centre + tyre.free_radius*cos(tyre.theta(tyre.penetration_inds(i , 2))), ...
         tyre.y_centre + tyre.free_radius*sin(tyre.theta(tyre.penetration_inds(i , 2))), "o", MarkerSize=10);
-    plot_handles(end+1) = plot(tyre.x_centre + tyre.free_radius * cos(tyre.theta(tyre.contact_centre_inds)), ...
+    plot_handles.frame(end+1) = plot(tyre.x_centre + tyre.free_radius * cos(tyre.theta(tyre.contact_centre_inds)), ...
         tyre.y_centre + tyre.free_radius * sin(tyre.theta(tyre.contact_centre_inds)), "m.", MarkerSize= 10);
-    plot_handles(end+1) = plot(road.x(road.contact_boundary_inds(i , 1)), ...
+    plot_handles.frame(end+1) = plot(road.x(road.contact_boundary_inds(i , 1)), ...
         road.y(road.contact_boundary_inds(i , 1)), "g*", MarkerSize= 15);
-    plot_handles(end+1) = plot(road.x(road.contact_boundary_inds(i , 2)),...
+    plot_handles.frame(end+1) = plot(road.x(road.contact_boundary_inds(i , 2)),...
         road.y(road.contact_boundary_inds(i , 2)), "g*", MarkerSize= 15);
 end
 end
