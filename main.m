@@ -4,7 +4,6 @@ close all
 tyre_sim_structs
 road_s = createRoad(road_s, constants_s);
 main_fig= figure();
-subplot(2 , 1 , 1)
 xlim([road_s.x(1) , road_s.x(end)]);
 ylim([tyre_s.y_centre - tyre_s.free_radius*1.1 , tyre_s.y_centre + tyre_s.free_radius*1.2]);
 hold on
@@ -12,10 +11,9 @@ daspect([1 1 1])
 plot_handles_s = drawRoad(road_s, plot_handles);
 % vidRecorder = VideoWriter("beamVid");
 % vidRecorder.open();
+%%
 clear road tyre constants
 while tyre_s.x_centre < (constants_s.step_position + constants_s.tyre_radius)
-
-    subplot(2 , 1 , 1);
     plot_handles_s = drawUndeformedTyre(tyre_s, plot_handles_s);
     try
     [tyre_s, road_s] = tyreRoadContact(tyre_s , road_s , constants_s);
@@ -27,28 +25,17 @@ while tyre_s.x_centre < (constants_s.step_position + constants_s.tyre_radius)
     plot_handles_s = drawPenetrations(tyre_s, road_s , plot_handles_s);
     tyre_s = getDeformedProfile(tyre_s ,road_s ,constants_s , length(tyre_s.contact_centre_inds));
     plot_handles_s = drawDeformedTyre(tyre_s , plot_handles_s);
-    %         direction = -1;
-    %         r = getDeformedTyre(tyre_s , road_s, 1 ,direction , constants_s);
-    %         tyre_deflections = r  - tyre_s.r_free;
-    %         plot_range = mod([tyre_s.contact_boundary_inds(1 , 1):direction:tyre_s.contact_boundary_inds(1 , 1) + 100*direction]-1, 360) + 1;
-    %         plot_handles_s.frame(end+1) = plot(tyre_s.x_centre + r(plot_range).*cos(tyre_s.theta(plot_range)) , tyre_s.y_centre+ r(plot_range).*sin(tyre_s.theta(plot_range)),LineWidth=3);
-    %         direction = 1;
-    %         r = getDeformedTyre(tyre_s , road_s, 1 ,direction , constants_s);
-    %         tyre_deflections = tyre_deflections + r - tyre_s.r_free;
-    %         plot_range = mod([tyre_s.contact_boundary_inds(1 , 2):direction:tyre_s.contact_boundary_inds(1 , 2) + 100*direction] -1, 360) + 1;
-    %         plot_handles_s.frame(end+1)= plot(tyre_s.x_centre + r(plot_range).*cos(tyre_s.theta(plot_range)) , tyre_s.y_centre+ r(plot_range).*sin(tyre_s.theta(plot_range)),LineWidth=3);
-    subplot(2 , 1 , 2)
-%     plot_handles_s.frame(end+1) = plot(rad2deg(tyre_s.theta) , tyre_deflections);
-%     hold on
-%     plot_handles_s.frame(end+1) = plot(rad2deg(tyre_s.theta(tyre_s.contact_boundary_inds)) , tyre_deflections(tyre_s.contact_boundary_inds) , "r*", MarkerSize=5);
-    %
-    % vidRecorder.writeVideo(getframe);
     pause();
     delete(plot_handles_s.frame);
     plot_handles_s.frame = [];
     tyre_s.x_centre = tyre_s.x_centre + 0.01;
 end
 % vidRecorder.close();
+
+%% testing second derivative
+% inds = (road_s.contact_centre_inds(1):road_s.penetration_inds(1 , 2))';
+% ddr = polarSecondDerivative(road_s.x(inds) - tyre_s.x_centre , road_s.y(inds) - tyre_s.y_centre , road_s.gradient(inds), road_s.ddy(inds));
+% [ddr , road2tyreDerivativeTF()]
 %% functions
 % main function
 function [tyre , road] = tyreRoadContact(tyre ,road, constants)
@@ -58,6 +45,7 @@ function [tyre , road] = tyreRoadContact(tyre ,road, constants)
 end
 
 % helper functions, functions that don't return objects
+
 function is_in_circle = getCirclePenetration(centre_x , centre_y, radius, point_x , point_y)
 is_in_circle = ((point_x - centre_x)^2 + (point_y - centre_y)^2) < radius^2;
 end
@@ -91,6 +79,7 @@ y = road.y(road_ind) - tyre.y_centre;
 theta = mod(atan2(y , x) , 2*pi);
 tyre_ind = interp1(tyre.theta , [1:length(tyre.theta)], theta, "nearest");
 end
+
 function road_inds = getRoadIndexfromTyreIndex(tyre , road , tyre_ind)
     x = tyre.x_centre + tyre.r_free(tyre_ind).*cos(tyre.theta(tyre_ind));
     road_inds = interp1(road.x , (1:length(road.x)), x , "nearest");
@@ -110,22 +99,22 @@ y_prime = road.gradient(road_point_ind);
 polar_derivative = (x + y*y_prime)/(y_prime * cos(theta) - sin(theta));
 end
 
-
 function polar_derivative = polarDerivative(x , y , dy)
-R = sqrt(x^2 + y^2);
-polar_derivative = R*(x + y*dy)/(x*dy - y);
+R = sqrt(x.^2 + y.^2);
+polar_derivative = R.*(x + y.*dy)./(x.*dy - y);
 end
 
 function polar_second_derivative  = polarSecondDerivative(x , y , dy , ddy)
-r = sqrt(x^2 + y^2);
+r = sqrt(x.^2 + y.^2);
 theta = atan2(y , x);
 dr_dtheta = polarDerivative(x , y , dy);
-dx_dtheta = dr_dtheta*x/r  - y;
-dy_dtheta = dr_dtheta*y/r + x;
-dydx_dtheta = ddy * dx_dtheta + (ddy/dy)*dy_dtheta; % d(dy/dx)/dtheta;
-polar_second_derivative = ((x*dy - y)*(dx_dtheta + y*dydx_dtheta + dy*dy_dtheta) - ...
-    (y*dy + x)*(dy*dx_dtheta + dydx_dtheta*x - dy_dtheta)) * r/ ...
-    (x*dy - y)^2 +  dr_dtheta*(y*dy  +x)/(x*dy - y);
+dx_dtheta = dr_dtheta.*x./r  - y;
+dy_dtheta = dr_dtheta.*y./r + x;
+% dydx_dtheta = ddy .* dx_dtheta + (ddy./dy).*dy_dtheta; % d(dy/dx)/dtheta;
+dydx_dtheta = ddy .*dx_dtheta;
+polar_second_derivative = ((x.*dy - y).*(dx_dtheta + y.*dydx_dtheta + dy.*dy_dtheta) - ...
+    (y.*dy + x).*(dy.*dx_dtheta + dydx_dtheta.*x - dy_dtheta)) .* r./ ...
+    (x.*dy - y).^2 +  dr_dtheta.*(y.*dy  +x)./(x.*dy - y);
 
 end
 
@@ -210,6 +199,30 @@ function [tyre, road] = getContactBoundaries(tyre, road, constants)
 
 % TODO, implement the actual separation condition here later, for now
 % it only uses the different between derivatives.
+% road_contact_inds = (road.contact_centre_inds(1):road.penetration_inds(1 , 2))';
+% ddr_dtheta = polarSecondDerivative(road_s.x(road_contact_inds) - tyre_s.x_centre , ...
+%     road_s.y(road_contact_inds) - tyre_s.y_centre ,...
+%     road_s.gradient(road_contact_inds), road_s.ddy(road_contact_inds));
+% dr_dtheta = polarDerivative(road_s.x(road_contact_inds) - tyre_s.x_centre , ...
+%     road_s.y(road_contact_inds) - tyre_s.y_centre ,...
+%     road_s.gradient(road_contact_inds));
+% road.contact_boundary_inds(1 , 2) = find(2 * constants.beta*dr_dtheta > ddr_dtheta , 1 , 'first') + road.contact_centre_inds(1);
+% if isempty( road.contact_boundary_inds(1 ,2))
+%     road.contact_boundary_inds(1 , 2) = road.penetration_inds(1 ,2);
+% end
+% 
+% road_contact_inds = (road.contact_boundary_inds(1,1):road.contact_centre_inds(1))';
+% ddr_dtheta = polarSecondDerivative(road_s.x(road_contact_inds) - tyre_s.x_centre , ...
+%     road_s.y(road_contact_inds) - tyre_s.y_centre ,...
+%     road_s.gradient(road_contact_inds), road_s.ddy(road_contact_inds));
+% dr_dtheta = polarDerivative(road_s.x(road_contact_inds) - tyre_s.x_centre , ...
+%     road_s.y(road_contact_inds) - tyre_s.y_centre ,...
+%     road_s.gradient(road_contact_inds));
+% road.contact_boundary_inds(1 , 2) = find(2 * constants.beta*dr_dtheta > ddr_dtheta , 1 , 'first') + road.contact_centre_inds(1);
+% if isempty( road.contact_boundary_inds(1 ,2))
+%     road.contact_boundary_inds(1 , 2) = road.penetration_inds(1 ,2);
+% end
+
 for i = 1:length(road.contact_centre_inds)
     % find aft boundary
     for check_ind = road.contact_centre_inds(i):-1:road.penetration_inds(i , 1)
@@ -290,7 +303,6 @@ x = [x;x(1)];
 y = [y;(1)];
 plot_handles.frame(end+1) = plot(x , y , 'm.-', MarkerSize=5);
 end
-
 
 function plot_handles = drawPenetrations(tyre, road , plot_handles ,fig_handle)
 if nargin == 3
