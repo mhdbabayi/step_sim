@@ -1,0 +1,6 @@
+Create classes tyre, tyre node and road 
+implement penetration detection with:
+    multiple contacts
+    a centre node for each contact
+    fore and aft boundary for each contact
+    
