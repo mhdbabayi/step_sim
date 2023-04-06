@@ -45,7 +45,6 @@ class Road:
         self.x = np.hstack((x1 , x_step , x2))
         self.y = np.hstack((y1, y_step , y2))
 
-
 class Tyre:
     def __init__(self, initial_x, initial_y,road:Road,free_radius = 1., node_res_deg = 1.) -> None:
         self.centre_x = initial_x
@@ -61,7 +60,7 @@ class Tyre:
             last_generated_node = last_generated_node.next
         self.node_zero.prev =last_generated_node
         last_generated_node.next = self.node_zero
-        self.contact_inds = []
+        self.contacts =[]
     def update_penetrations(self):
         current_node = self.node_zero.next
         while current_node is not self.node_zero:
@@ -77,11 +76,46 @@ class Tyre:
                     current_node.penetration_point = intersection_point
                     break
             current_node = current_node.next
-                         
+        self.update_derivatives()
+    def update_derivatives(self):
+        current = self.node_zero.next
+    # traverse the circular linked list
+        while current is not self.node_zero:
+            # check if the current node has two non-None neighbors on each side
+            if current.prev.penetration_point is not None and current.next.penetration_point is not None:
+                # calculate the first and second derivatives of y with respect to x
+                h0 = current.penetration_point[0] - current.prev.penetration_point[0]
+                h1 = current.next.penetration_point[0] - current.penetration_point[0]
+                y0 = current.prev.penetration_point[1]
+                y1 = current.penetration_point[1]
+                y2 = current.next.penetration_point[1]
+                current.dy = (y2 - y0)/(0.5*(h1+h1))
+                current.ddy = (y2 + y0 - 2*y1)/(h1*h0)
+                # store the derivatives in the current node
+            current = current.next
+    def update_contacts(self):
+        current_node = self.node_zero.next
+        while current_node is not self.node_zero:
+            if current_node.penetration_point:
+                self.contacts.append(Tyre.contact(tyre=self,
+                                                  start_node=current_node))
+                min_distance = np.linalg.norm(self.centre_x - np.array(current_node.penetration_point))
+                self.contacts[-1].centre_node = current_node
+                while current_node.penetration_point:
+                    new_distance = np.linalg.norm(self.centre_x - np.array(current_node.penetration_point))
+                    if min_distance > new_distance:
+                        min_distance = new_distance
+                        self.contacts[-1].centre_node = current_node
+                    current_node = current_node.next
+                self.contacts[-1].end_node = current_node
+            current_node = current_node.next
+
     class contact:
-        def __init__(self,tyre, start_node, end_node) -> None:
-            self.length = start_node - end_node
+        def __init__(self,tyre, start_node = None, end_node= None) -> None:
+            self.start_node = start_node
+            self.end_node = end_node
             self.centre_node = start_node
+            self.tyre = tyre
     class node:
         def __init__(self,tyre, theta, next_node=None, previous_node =None):
             self.tyre:Tyre = tyre
@@ -92,15 +126,17 @@ class Tyre:
             self.x = self.tyre.centre_x + np.cos(self.theta)*self.tyre.free_radius
             self.y = self.tyre.centre_y + np.sin(self.theta)*self.tyre.free_radius
             self.penetration_point = None
+            self.dy = None
+            self.ddy = None
         def __sub__(self, other) -> np.int32:
             result = 0
-            current_node = 0
+            current_node = other
             if self is other:
                 return 0
             while current_node.next is not other and current_node is not self:
-                iterator = iterator.next
+                current_node = current_node.next
                 result = result+1
-            if current_node is self:
+            if current_node is other:
                 return None
             return result
         def __add__(self, N:np.int32):
