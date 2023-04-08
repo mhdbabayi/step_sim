@@ -30,6 +30,33 @@ def intersection(p1, p2, P1, P2):
 
     # no intersection found
     return None
+def polar_derivative(X , Y , DY):
+    #given point x,y and the deriavtive in cartesian coordiantes dy
+    #calculates dr/d(theta) in polar coordinates
+    x = np.asarray(X)
+    y = np.asarray(Y)
+    dy = np.asarray(DY)
+    r = np.sqrt(x**2 + y**2)
+    dr = r*(x + y*dy)/(x*dy - y)
+    if np.isscalar(X):
+        return dr.item()
+    return dr
+def polar_second_derivative(X , Y, DY , DDY):
+    x = np.asarray(X)
+    y = np.asarray(Y)
+    dy = np.asarray(DY)
+    ddy = np.asarray(DDY)
+    r = np.sqrt(x**2 + y**2)
+    dr_dtheta = polar_derivative(x , y , dy)
+    dx_dtheta = dr_dtheta*x/r  - y
+    dy_dtheta = dr_dtheta*y/r + x
+    dydx_dtheta = ddy*dx_dtheta
+    ddr_dtheta = ((x*dy - y)*(dx_dtheta + y*dydx_dtheta + dy*dy_dtheta) -\
+                  (y*dy + x)*(dy*dx_dtheta + dydx_dtheta*x - dy_dtheta)) * r/(x*dy - y)**2\
+                   +dr_dtheta*(y*dy  +x)/(x*dy - y)
+    if np.isscalar(X):
+        return ddr_dtheta.item()
+    return ddr_dtheta
 
 
 class Road:
@@ -46,6 +73,7 @@ class Road:
         self.y = np.hstack((y1, y_step , y2))
 
 class Tyre:
+    beta = 1
     def __init__(self, initial_x, initial_y,road:Road,free_radius = 1., node_res_deg = 1.) -> None:
         self.centre_x = initial_x
         self.centre_y = initial_y
@@ -91,31 +119,51 @@ class Tyre:
                 y2 = current.next.penetration_point[1]
                 current.dy = (y2 - y0)/(0.5*(h1+h1))
                 current.ddy = (y2 + y0 - 2*y1)/(h1*h0)
+                current.dr_dtheta = polar_derivative(X=current.x - self.centre_x,
+                                                     Y = current.y - self.centre_y,
+                                                     DY = current.dy)
+                current.ddr_dtheta = polar_second_derivative(X = current.x - self.centre_x,
+                                                             Y = current.y -self.centre_y,
+                                                             DY = current.dy, DDY= current.ddy)
                 # store the derivatives in the current node
             current = current.next
     def update_contacts(self):
         current_node = self.node_zero.next
+        self.contacts = []
         while current_node is not self.node_zero:
             if current_node.penetration_point:
                 self.contacts.append(Tyre.contact(tyre=self,
                                                   start_node=current_node))
-                min_distance = np.linalg.norm(self.centre_x - np.array(current_node.penetration_point))
-                self.contacts[-1].centre_node = current_node
-                while current_node.penetration_point:
-                    new_distance = np.linalg.norm(self.centre_x - np.array(current_node.penetration_point))
-                    if min_distance > new_distance:
-                        min_distance = new_distance
-                        self.contacts[-1].centre_node = current_node
-                    current_node = current_node.next
-                self.contacts[-1].end_node = current_node
+                current_node = self.contacts[-1].penetration_end_node
             current_node = current_node.next
-
+    def find_contact_limits(self):
+        pass
+    # subcalsses
     class contact:
-        def __init__(self,tyre, start_node = None, end_node= None) -> None:
-            self.start_node = start_node
-            self.end_node = end_node
-            self.centre_node = start_node
-            self.tyre = tyre
+        def __init__(self,tyre, start_node) -> None:
+            self.penetration_start_node:Tyre.node = start_node
+            self.penetration_end_node:Tyre.node = None
+            self.centre_node:Tyre.node = None
+            self.fore_limit:Tyre.node = None
+            self.aft_limit:Tyre.node = None
+            self.tyre:Tyre = tyre
+            self.set_penetration_limits()
+        def set_penetration_limits(self):
+            self.centre_node = self.penetration_end_node = self.penetration_start_node
+            min_distance = np.linalg.norm(np.array([self.tyre.centre_x, self.tyre.centre_y])
+                                           - np.array(self.centre_node.penetration_point))
+            while self.penetration_end_node.next.penetration_point is not None:
+                new_distance = np.linalg.norm(np.array([self.tyre.centre_x, self.tyre.centre_y])
+                                           - np.array(self.penetration_end_node.penetration_point))
+                if min_distance > new_distance:
+                    min_distance = new_distance
+                    self.centre_node = self.penetration_end_node
+                self.penetration_end_node = self.penetration_end_node.next
+            
+
+
+
+
     class node:
         def __init__(self,tyre, theta, next_node=None, previous_node =None):
             self.tyre:Tyre = tyre
@@ -123,11 +171,13 @@ class Tyre:
             self.prev: Tyre.node = previous_node
             self.theta = theta
             self.deformation = 0
-            self.x = self.tyre.centre_x + np.cos(self.theta)*self.tyre.free_radius
-            self.y = self.tyre.centre_y + np.sin(self.theta)*self.tyre.free_radius
+            self.x = self.tyre.centre_x + np.cos(self.theta + np.pi/2)*self.tyre.free_radius
+            self.y = self.tyre.centre_y + np.sin(self.theta + np.pi/2)*self.tyre.free_radius
             self.penetration_point = None
             self.dy = None
             self.ddy = None
+            self.dr_dtheta = None
+            self.ddr_dtheta = None
         def __sub__(self, other) -> np.int32:
             result = 0
             current_node = other
