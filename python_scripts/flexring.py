@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 '''
 sign convention: 
 Tyre node zero is at the top and the nodes go counter-clockwise
@@ -77,12 +78,13 @@ class Road:
         self.y = np.hstack((y1, y_step , y2))
 
 class Tyre:
-    beta = 1.42
+    beta = 5
     def __init__(self, initial_x, initial_y,road:Road,free_radius = 1., node_res_deg = 1.) -> None:
         self.centre_x = initial_x
         self.centre_y = initial_y
         self.road = road
         self.free_radius = free_radius
+        self.delta_theta = np.deg2rad(node_res_deg)
         self.node_zero = Tyre.node(self,theta =0)
         theta = 0
         last_generated_node = self.node_zero
@@ -105,7 +107,11 @@ class Tyre:
                                                  (self.road.x[i], self.road.y[i]),
                                                  (self.road.x[i+1], self.road.y[i+1]))
                 if intersection_point:
-                    current_node.penetration_point = intersection_point
+                    current_node.penetration_point = np.array(intersection_point)
+                    current_node.road_dr = np.linalg.norm(
+                        [self.centre_x , self.centre_y] - 
+                        current_node.penetration_point
+                        ) - self.free_radius
                     break
             current_node = current_node.next
         self.update_derivatives()
@@ -135,22 +141,75 @@ class Tyre:
         current_node = self.node_zero.next
         self.contacts = []
         while current_node is not self.node_zero:
-            if current_node.penetration_point:
+            if current_node.penetration_point is not None:
                 self.contacts.append(Tyre.contact(tyre=self,
                                                   start_node=current_node))
                 current_node = self.contacts[-1].fore_penetration_node
             current_node = current_node.next
+    def update_deformation(self):
+        current_node = self.node_zero.next
+        # set all deformations to zero
+        while current_node is not self.node_zero:
+            current_node.deformation = 0
+            current_node = current_node.next
+        #fore:
+        for c in self.contacts:
+            #fore
+            current_node = c.fore_separation_node
+            delta_theta = 0
+            # boundary conditions 
+            bc_1 = current_node.road_dr
+            bc_2 = current_node.road_dr_dtheta
+            while np.exp(-self.beta*delta_theta) > 0.01:
+                current_node.deformation = current_node.deformation+\
+                    np.exp(-self.beta*delta_theta)*\
+                    (bc_1*np.cos(self.beta*delta_theta) +\
+                    (bc_2/self.beta + bc_1)*np.sin(self.beta * delta_theta))
+                current_node = current_node.next
+                delta_theta = delta_theta + self.delta_theta
+            #aft
+            current_node = c.aft_separation_node
+            delta_theta = 0
+            # boundary conditions 
+            bc_1 = current_node.road_dr
+            bc_2 = -current_node.road_dr_dtheta
+            while np.exp(-self.beta*delta_theta) > 0.01:
+                current_node.deformation = current_node.deformation +\
+                    np.exp(-self.beta*delta_theta)*\
+                    (bc_1*np.cos(self.beta*delta_theta) +\
+                    (bc_2/self.beta + bc_1)*np.sin(self.beta * delta_theta))
+                current_node = current_node.prev
+                delta_theta = delta_theta + self.delta_theta
 
+        #contact patches:
+        for c in self.contacts:
+            current_node = c.aft_separation_node
+            while current_node is not c.fore_separation_node.next:
+                current_node.deformation = current_node.road_dr
+                current_node = current_node.next
+
+    def draw(self):
+        plt.plot(self.centre_x , self.centre_y, 'r*')
+        n = self.node_zero.next
+        while n is not self.node_zero:
+            plt.plot(n.x , n.y, 'r.')
+            if n.penetration_point is not None:
+                plt.plot(n.penetration_point[0], n.penetration_point[1] , 'm.')
+            if n.deformation is not None:
+                plt.plot(self.centre_x + np.cos(n.theta + np.pi/2)*(self.free_radius+n.deformation),
+                        self.centre_y + np.sin(n.theta + np.pi/2)*(self.free_radius + n.deformation),
+                        marker=".", color="blue")
+            n =n.next
+        [c.draw() for c in self.contacts]
     # subcalsses
     class contact:
         def __init__(self,tyre, start_node) -> None:
+            self.tyre:Tyre = tyre
             self.aft_penetration_node:Tyre.node = start_node
             self.fore_penetration_node:Tyre.node = None
             self.centre_node:Tyre.node = None
             self.fore_separation_node:Tyre.node = None
             self.aft_separation_node: Tyre.node = None
-
-            self.tyre:Tyre = tyre
             self.set_penetration_limits()
             self.set_boundary_conditions()
         def set_penetration_limits(self):
@@ -165,18 +224,38 @@ class Tyre:
                     self.centre_node = self.fore_penetration_node
                 self.fore_penetration_node = self.fore_penetration_node.next
         def set_boundary_conditions(self):
+            # second derivative of the deformation profile at the start
+            # is equal to :
+            # -2*beta^2*(w0 + w_prim/beta)
+            # separation happens when this derivative is smaller than the road profile
+            # second derivative, i.e., the road is curaving away from the tyre 
+            # faster than the profile 
             self.fore_separation_node = self.centre_node
-            while self.fore_separation_node.road_ddr_dtheta >\
-                  2*Tyre.beta*self.fore_separation_node.road_dr_dtheta and\
+            while self.fore_separation_node.road_ddr_dtheta <\
+                  -2*(Tyre.beta**2)*(self.fore_separation_node.road_dr_dtheta/self.tyre.beta +\
+                                     self.fore_separation_node.road_dr) and\
                     self.fore_separation_node.next is not self.fore_penetration_node:
                 self.fore_separation_node = self.fore_separation_node.next
+            
             self.aft_separation_node = self.centre_node
-            while self.aft_separation_node.road_ddr_dtheta >\
-                  -2*Tyre.beta*self.aft_separation_node.road_dr_dtheta and\
+            while self.aft_separation_node.road_ddr_dtheta <\
+                  -2*(Tyre.beta**2)*(-self.aft_separation_node.road_dr_dtheta/self.tyre.beta +\
+                                     self.aft_separation_node.road_dr) and\
                     self.aft_separation_node.prev is not self.aft_penetration_node:
                 self.aft_separation_node = self.aft_separation_node.prev
+        def draw(self):
+            plt.plot(self.centre_node.penetration_point[0],
+                     self.centre_node.penetration_point[1],
+                     marker='o')
+            plt.plot(self.fore_separation_node.penetration_point[0],
+                     self.fore_separation_node.penetration_point[1],
+                     marker='*', color = 'black', markersize=10)
+            plt.plot(self.aft_separation_node.penetration_point[0],
+                     self.aft_separation_node.penetration_point[1],
+                     marker='*', color = 'green', markersize=10)
+            
 
-                
+
     class node:
         def __init__(self,tyre, theta, next_node=None, previous_node =None):
             self.tyre:Tyre = tyre
@@ -187,6 +266,7 @@ class Tyre:
             self.x = self.tyre.centre_x + np.cos(self.theta + np.pi/2)*self.tyre.free_radius
             self.y = self.tyre.centre_y + np.sin(self.theta + np.pi/2)*self.tyre.free_radius
             self.penetration_point = None
+            self.road_dr = None # amount of penetration
             self.road_dy = None
             self.road_ddy = None
             self.road_dr_dtheta = None
