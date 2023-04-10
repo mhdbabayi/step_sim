@@ -62,6 +62,7 @@ def polar_second_derivative(X , Y, DY , DDY):
     if np.isscalar(X):
         return ddr_dtheta.item()
     return ddr_dtheta
+    
 
 
 class Road:
@@ -78,7 +79,7 @@ class Road:
         self.y = np.hstack((y1, y_step , y2))
 
 class Tyre:
-    beta = 5
+    beta = 3
     def __init__(self, initial_x, initial_y,road:Road,free_radius = 1., node_res_deg = 1.) -> None:
         self.centre_x = initial_x
         self.centre_y = initial_y
@@ -160,7 +161,7 @@ class Tyre:
             # boundary conditions 
             bc_1 = current_node.road_dr
             bc_2 = current_node.road_dr_dtheta
-            while np.exp(-self.beta*delta_theta) > 0.01:
+            while np.exp(-self.beta*delta_theta) > 0.01 and current_node is not self.node_zero:
                 current_node.deformation = current_node.deformation+\
                     np.exp(-self.beta*delta_theta)*\
                     (bc_1*np.cos(self.beta*delta_theta) +\
@@ -173,7 +174,7 @@ class Tyre:
             # boundary conditions 
             bc_1 = current_node.road_dr
             bc_2 = -current_node.road_dr_dtheta
-            while np.exp(-self.beta*delta_theta) > 0.01:
+            while np.exp(-self.beta*delta_theta) > 0.01 and current_node is not self.node_zero:
                 current_node.deformation = current_node.deformation +\
                     np.exp(-self.beta*delta_theta)*\
                     (bc_1*np.cos(self.beta*delta_theta) +\
@@ -186,6 +187,7 @@ class Tyre:
             current_node = c.aft_separation_node
             while current_node is not c.fore_separation_node.next:
                 current_node.deformation = current_node.road_dr
+                #current_node.deformation = 0
                 current_node = current_node.next
 
     def draw(self):
@@ -224,23 +226,14 @@ class Tyre:
                     self.centre_node = self.fore_penetration_node
                 self.fore_penetration_node = self.fore_penetration_node.next
         def set_boundary_conditions(self):
-            # second derivative of the deformation profile at the start
-            # is equal to :
-            # -2*beta^2*(w0 + w_prim/beta)
-            # separation happens when this derivative is smaller than the road profile
-            # second derivative, i.e., the road is curaving away from the tyre 
-            # faster than the profile 
+            
             self.fore_separation_node = self.centre_node
-            while self.fore_separation_node.road_ddr_dtheta <\
-                  -2*(Tyre.beta**2)*(self.fore_separation_node.road_dr_dtheta/self.tyre.beta +\
-                                     self.fore_separation_node.road_dr) and\
+            while not self.fore_separation_node.seperation_condition(direction=-1) and\
                     self.fore_separation_node.next is not self.fore_penetration_node:
                 self.fore_separation_node = self.fore_separation_node.next
-            
+            print('fore done')
             self.aft_separation_node = self.centre_node
-            while self.aft_separation_node.road_ddr_dtheta <\
-                  -2*(Tyre.beta**2)*(-self.aft_separation_node.road_dr_dtheta/self.tyre.beta +\
-                                     self.aft_separation_node.road_dr) and\
+            while not self.aft_separation_node.seperation_condition(direction=-1) and\
                     self.aft_separation_node.prev is not self.aft_penetration_node:
                 self.aft_separation_node = self.aft_separation_node.prev
         def draw(self):
@@ -253,6 +246,12 @@ class Tyre:
             plt.plot(self.aft_separation_node.penetration_point[0],
                      self.aft_separation_node.penetration_point[1],
                      marker='*', color = 'green', markersize=10)
+            plt.plot(self.aft_penetration_node.penetration_point[0],
+                     self.aft_penetration_node.penetration_point[1],
+                     marker='o', color = 'red', markersize=5)
+            plt.plot(self.fore_penetration_node.penetration_point[0],
+                     self.fore_penetration_node.penetration_point[1],
+                     marker='o', color='green', markersize=5)
             
 
 
@@ -289,7 +288,20 @@ class Tyre:
                 result_node = result_node.next
                 i = i+1
             return result_node
-        
+        def seperation_condition(self, direction):
+            '''
+            direction shoule be 1 for fore and -1 fore aft
+            second derivative of the deformation profile at the start
+            is equal to :
+            -2*beta^2*(w0 + w_prim/beta)
+            separation happens when this derivative is smaller than the road profile
+            second derivative, i.e., the road is curaving away from the tyre 
+            faster than the profile 
+            '''
+            print(f'{self.road_ddr_dtheta:0.3f}\t'\
+                  f'{-2*(Tyre.beta**2)*(-direction*self.road_dr_dtheta/Tyre.beta + self.road_dr):0.3f}')
+            return self.road_ddr_dtheta > \
+                -2*(Tyre.beta**2)*(-direction*self.road_dr_dtheta/Tyre.beta + self.road_dr)
 
 
             
