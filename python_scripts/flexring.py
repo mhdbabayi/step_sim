@@ -31,7 +31,7 @@ def intersection(p1, p2, P1, P2):
     if t >= 0 and t <= 1 and u >= 0 and u <= 1:
         x_intersect = x0 + t*(x1 - x0)
         y_intersect = y0 + t*(y1 - y0)
-        return (x_intersect, y_intersect)
+        return (x_intersect, y_intersect) 
 
     # no intersection found
     return None
@@ -70,16 +70,23 @@ class Road:
         self.length = length
         x1 = np.array([0, length/2- step_width/2])
         y1 = np.array([0,0])
-        x_step = length/2 + np.linspace(-step_width/2 , step_width/2, np.int32(step_width/0.01))[1:]
+        x_step = length/2 + np.linspace(-step_width/2 , step_width/2,np.int32(step_width/0.01))[1:]
         step_phase = np.linspace(0, step_profile_phase, len(x_step))
         y_step = step_height/2 - (step_height/2)*np.cos(step_phase)
         x2 = np.array([x_step[-1] + 0.01, self.length])
         y2 = np.array([y_step[-1], y_step[-1]])
         self.x = np.hstack((x1 , x_step , x2))
         self.y = np.hstack((y1, y_step , y2))
+        self.dydx = np.zeros(len(self.x))
+        self.ddydx = np.zeros(len(self.x))
+        for i in np.arange(start=1,stop=(len(self.x))-1):
+            self.dydx[i] = (self.y[i+1] + self.y[i-1])/(self.x[i+1] - self.x[i-1])
+            self.ddydx[i] = (self.y[i+1] + self.y[i-1] - 2*self.y[i])/\
+                               ((self.x[i+1]-self.x[i])*(self.x[i] - self.x[i-1])) 
+
 
 class Tyre:
-    beta = 3
+    beta = 5
     def __init__(self, initial_x, initial_y,road:Road,free_radius = 1., node_res_deg = 1.) -> None:
         self.centre_x = initial_x
         self.centre_y = initial_y
@@ -118,11 +125,10 @@ class Tyre:
         self.update_derivatives()
     def update_derivatives(self):
         current = self.node_zero.next
-    # traverse the circular linked list
+
         while current is not self.node_zero:
-            # check if the current node has two non-None neighbors on each side
+
             if current.prev.penetration_point is not None and current.next.penetration_point is not None:
-                # calculate the first and second derivatives of y with respect to x
                 h0 = current.penetration_point[0] - current.prev.penetration_point[0]
                 h1 = current.next.penetration_point[0] - current.penetration_point[0]
                 y0 = current.prev.penetration_point[1]
@@ -136,7 +142,6 @@ class Tyre:
                 current.road_ddr_dtheta = polar_second_derivative(X = current.x - self.centre_x,
                                                              Y = current.y -self.centre_y,
                                                              DY = current.road_dy, DDY= current.road_ddy)
-                # store the derivatives in the current node
             current = current.next
     def update_contacts(self):
         current_node = self.node_zero.next
@@ -189,7 +194,6 @@ class Tyre:
                 current_node.deformation = current_node.road_dr
                 #current_node.deformation = 0
                 current_node = current_node.next
-
     def draw(self):
         plt.plot(self.centre_x , self.centre_y, 'r*')
         n = self.node_zero.next
@@ -298,11 +302,13 @@ class Tyre:
             second derivative, i.e., the road is curaving away from the tyre 
             faster than the profile 
             '''
-            print(f'{self.road_ddr_dtheta:0.3f}\t'\
-                  f'{-2*(Tyre.beta**2)*(-direction*self.road_dr_dtheta/Tyre.beta + self.road_dr):0.3f}')
-            return self.road_ddr_dtheta > \
-                -2*(Tyre.beta**2)*(-direction*self.road_dr_dtheta/Tyre.beta + self.road_dr)
-
+            #print(f'{self.road_ddr_dtheta:0.3f}\t'\
+            #      f'{-2*(Tyre.beta**2)*(-direction*self.road_dr_dtheta/Tyre.beta + self.road_dr):0.3f}')
+            try:
+                return self.road_ddr_dtheta > \
+                    -2*(Tyre.beta**2)*(-direction*self.road_dr_dtheta/Tyre.beta + self.road_dr)
+            except:
+                return True
 
             
                 
