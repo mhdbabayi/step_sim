@@ -3,10 +3,13 @@ import os
 import numpy as np
 os.system("clear")
 from matplotlib import pyplot as plt
-road = flexring.Road(step_width=0.3, step_height=0.5,step_profile_phase=np.pi*2)
+road = flexring.Road(step_width=0.3, step_height=0.1,step_profile_phase=np.pi)
+
+
+
 main_fig = plt.figure()
-x0 = 2.5
-for y0 in np.linspace(1.5 , 0, 10):    
+y0 = 1.01
+for x0 in np.linspace(2 , 3, 20):    
     tyre = flexring.Tyre(initial_x=x0, initial_y=y0,road=road)
     plt.plot(road.x, road.y,'.-')
     tyre.update_penetrations()

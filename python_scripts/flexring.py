@@ -23,15 +23,15 @@ def intersection(p1, p2, P1, P2):
     num1 = (X1 - X0)*(y0 - Y0) + (X0 - x0)*(Y1-Y0)
     num2 = (x1 - x0)*(y0 -Y0) + (X0 - x0)*(y1 - y0)
 
-    # calculate the parameters t and u
-    t = num1 / den
-    u = num2 / den
+    # calculate the parameters the ratios of intersetion point distance from 
+    # the line segment start point to line segement length
+    distance_ratio_line_1 = num1 / den
+    distance_ratio_line_2 = num2 / den
 
     # check if the intersection point is within the line segments
-    if t >= 0 and t <= 1 and u >= 0 and u <= 1:
-        x_intersect = x0 + t*(x1 - x0)
-        y_intersect = y0 + t*(y1 - y0)
-        return (x_intersect, y_intersect) 
+    if distance_ratio_line_1 >= 0 and distance_ratio_line_1 <= 1 and\
+          distance_ratio_line_2 >= 0 and distance_ratio_line_2 <= 1:
+        return distance_ratio_line_2
 
     # no intersection found
     return None
@@ -80,13 +80,13 @@ class Road:
         self.dydx = np.zeros(len(self.x))
         self.ddydx = np.zeros(len(self.x))
         for i in np.arange(start=1,stop=(len(self.x))-1):
-            self.dydx[i] = (self.y[i+1] + self.y[i-1])/(self.x[i+1] - self.x[i-1])
+            self.dydx[i] = (self.y[i+1] - self.y[i-1])/(self.x[i+1] - self.x[i-1])
             self.ddydx[i] = (self.y[i+1] + self.y[i-1] - 2*self.y[i])/\
                                ((self.x[i+1]-self.x[i])*(self.x[i] - self.x[i-1])) 
 
 
 class Tyre:
-    beta = 5
+    beta = 10
     def __init__(self, initial_x, initial_y,road:Road,free_radius = 1., node_res_deg = 1.) -> None:
         self.centre_x = initial_x
         self.centre_y = initial_y
@@ -106,23 +106,34 @@ class Tyre:
     def update_penetrations(self):
         current_node = self.node_zero.next
         while current_node is not self.node_zero:
-            #road_point_idx = np.where((self.road.x > self.centre_x - self.free_radius) & 
-            #                         (self.road.x < self.centre_x + self.free_radius))[0]
             current_node.penetration_point=None
             for i  in range(len(self.road.x[0:-1])):
-                intersection_point =intersection((self.centre_x, self.centre_y),
-                                                 (current_node.x, current_node.y),
-                                                 (self.road.x[i], self.road.y[i]),
-                                                 (self.road.x[i+1], self.road.y[i+1]))
-                if intersection_point:
-                    current_node.penetration_point = np.array(intersection_point)
+                t =intersection((self.centre_x, self.centre_y),
+                                (current_node.x, current_node.y),
+                                (self.road.x[i], self.road.y[i]),
+                                (self.road.x[i+1], self.road.y[i+1]))
+                if t is not None:
+                    current_node.penetration_point = np.array(
+                        (self.road.x[i] + t*(self.road.x[i+1] - self.road.x[i]),
+                        self.road.y[i] + t*(self.road.y[i+1] - self.road.y[i])))
                     current_node.road_dr = np.linalg.norm(
                         [self.centre_x , self.centre_y] - 
                         current_node.penetration_point
                         ) - self.free_radius
+                    current_node.road_dy = self.road.dydx[i] + t*(self.road.dydx[i+1] - self.road.dydx[i])
+                    current_node.road_ddy = self.road.ddydx[i] + t*(self.road.ddydx[i+1] - self.road.ddydx[i])
+                    current_node.road_dr_dtheta = polar_derivative(
+                        X = current_node.penetration_point[0] - self.centre_x,
+                        Y = current_node.penetration_point[1] - self.centre_y,
+                        DY = current_node.road_dy)
+                    current_node.road_ddr_dtheta = polar_second_derivative(
+                        X = current_node.penetration_point[0] - self.centre_x,
+                        Y = current_node.penetration_point[1] - self.centre_y,
+                        DY = current_node.road_dy,
+                        DDY= current_node.road_ddy)
                     break
             current_node = current_node.next
-        self.update_derivatives()
+        #self.update_derivatives()
     def update_derivatives(self):
         current = self.node_zero.next
 
@@ -134,7 +145,7 @@ class Tyre:
                 y0 = current.prev.penetration_point[1]
                 y1 = current.penetration_point[1]
                 y2 = current.next.penetration_point[1]
-                current.road_dy = (y2 - y0)/(0.5*(h1+h1))
+                current.road_dy = (y2 - y0)/((h0+h1))
                 current.road_ddy = (y2 + y0 - 2*y1)/(h1*h0)
                 current.road_dr_dtheta = polar_derivative(X=current.x - self.centre_x,
                                                      Y = current.y - self.centre_y,
@@ -232,7 +243,7 @@ class Tyre:
         def set_boundary_conditions(self):
             
             self.fore_separation_node = self.centre_node
-            while not self.fore_separation_node.seperation_condition(direction=-1) and\
+            while not self.fore_separation_node.seperation_condition(direction=1) and\
                     self.fore_separation_node.next is not self.fore_penetration_node:
                 self.fore_separation_node = self.fore_separation_node.next
             print('fore done')
@@ -302,14 +313,12 @@ class Tyre:
             second derivative, i.e., the road is curaving away from the tyre 
             faster than the profile 
             '''
-            #print(f'{self.road_ddr_dtheta:0.3f}\t'\
-            #      f'{-2*(Tyre.beta**2)*(-direction*self.road_dr_dtheta/Tyre.beta + self.road_dr):0.3f}')
-            try:
-                return self.road_ddr_dtheta > \
-                    -2*(Tyre.beta**2)*(-direction*self.road_dr_dtheta/Tyre.beta + self.road_dr)
-            except:
-                return True
+            print(f'{self.road_ddr_dtheta:0.3f}\t{self.road_dr_dtheta:0.3f}\t'\
+                  f'{-2*(Tyre.beta**2)*(direction*self.road_dr_dtheta/Tyre.beta + self.road_dr):0.3f}\t'\
+                  f'{self.road_dy:0.3f}\t{self.road_ddy:0.3f}' )
 
+            return 0.9*self.road_ddr_dtheta > \
+                    -2*(Tyre.beta**2)*(direction*self.road_dr_dtheta/Tyre.beta + self.road_dr)
             
                 
 
