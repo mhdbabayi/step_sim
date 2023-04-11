@@ -5,6 +5,7 @@ sign convention:
 Tyre node zero is at the top and the nodes go counter-clockwise
 Deflection of a node is positive towards the outside of the tyre(increase in radius)
 '''
+dt = 0.01
 
 def intersection(p1, p2, P1, P2):
     x0, y0 = p1
@@ -63,14 +64,13 @@ def polar_second_derivative(X , Y, DY , DDY):
         return ddr_dtheta.item()
     return ddr_dtheta
     
-
-
 class Road:
     def __init__(self, step_width, step_height,step_profile_phase = np.pi, length = 5) -> None:
         self.length = length
         x1 = np.array([0, length/2- step_width/2])
         y1 = np.array([0,0])
-        x_step = length/2 + np.linspace(-step_width/2 , step_width/2,np.int32(step_width/0.01))[1:]
+        x_step = length/2 + np.linspace(-step_width/2 , step_width/2,
+                                        np.max((20,np.int32(step_width/0.01))))[1:]
         step_phase = np.linspace(0, step_profile_phase, len(x_step))
         y_step = step_height/2 - (step_height/2)*np.cos(step_phase)
         x2 = np.array([x_step[-1] + 0.01, self.length])
@@ -84,9 +84,8 @@ class Road:
             self.ddydx[i] = (self.y[i+1] + self.y[i-1] - 2*self.y[i])/\
                                ((self.x[i+1]-self.x[i])*(self.x[i] - self.x[i-1])) 
 
-
 class Tyre:
-    beta = 10
+    beta = 5
     def __init__(self, initial_x, initial_y,road:Road,free_radius = 1., node_res_deg = 1.) -> None:
         self.centre_x = initial_x
         self.centre_y = initial_y
@@ -218,6 +217,22 @@ class Tyre:
                         marker=".", color="blue")
             n =n.next
         [c.draw() for c in self.contacts]
+    def update_node_positions(self):
+        current_node = self.node_zero
+        current_node.x = self.centre_x + np.cos(current_node.theta + np.pi/2)*self.free_radius
+        current_node.y = self.centre_y + np.sin(current_node.theta + np.pi/2)*self.free_radius
+        while (current_node := current_node.next) is not self.node_zero:
+            current_node.x = self.centre_x + np.cos(current_node.theta + np.pi/2)*self.free_radius
+            current_node.y = self.centre_y + np.sin(current_node.theta + np.pi/2)*self.free_radius
+
+    def update_state(self, speed_y, speed_x):
+        self.centre_x = self.centre_x + dt*speed_x
+        self.centre_y = self.centre_y + dt*speed_y
+        self.contacts = []
+        self.update_node_positions()
+        self.update_penetrations()
+        self.update_contacts()
+        self.update_deformation()
     # subcalsses
     class contact:
         def __init__(self,tyre, start_node) -> None:
@@ -268,8 +283,6 @@ class Tyre:
                      self.fore_penetration_node.penetration_point[1],
                      marker='o', color='green', markersize=5)
             
-
-
     class node:
         def __init__(self,tyre, theta, next_node=None, previous_node =None):
             self.tyre:Tyre = tyre
