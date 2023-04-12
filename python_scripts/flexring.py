@@ -77,10 +77,38 @@ def fit_poly(P1, P2, P3):
     ])
 
     B = np.array([y1, dy1, y2, dy2, y3, dy3])
-
     coefficients = np.linalg.solve(A, B)
 
     return np.poly1d(coefficients)
+def construct_piecewise_poly(P1, P2, P3):
+    x1, y1, dy1 = (P1[0], P1[1], P1[2])
+    x2, y2, dy2 = (P3[0], P3[1], P3[2])
+    x3, y3 = (P2[0], P2[1])
+    '''
+    A1 = np.array([[x1**2, x1, 1], [2*x1, 1, 0], [x3**2, x3, 1]])
+    B1 = np.array([y1, dy1, y3])
+    a1, b1, c1 = np.linalg.solve(A1, B1)
+
+    A2 = np.array([[x2**2, x2, 1], [2*x2, 1, 0], [x3**2, x3, 1]])
+    B2 = np.array([y2, dy2, y3])
+    a2, b2, c2 = np.linalg.solve(A2, B2)
+    '''
+    c1 = y1
+    b1 = dy1 - 2*c1/x1
+    a1 = (y3 - c1 - b1*x3) / x3**2
+
+    # Coefficients for Q2(x)
+    c2 = y2
+    b2 = dy2 - 2*c2/x2
+    a2 = (y3 - c2 - b2*x3) / x3**2
+    def piecewise_polynomial(x):
+        if x <= x3:
+            return a1*x**2 + b1*x + c1
+        else:
+            return a2*x**2 + b2*x + c2
+
+    return piecewise_polynomial
+
 class Road:
     def __init__(self, step_width, step_height,step_profile_phase = np.pi, length = 5) -> None:
         self.length = length
@@ -102,7 +130,7 @@ class Road:
                                ((self.x[i+1]-self.x[i])*(self.x[i] - self.x[i-1])) 
 
 class Tyre:
-    beta = 3
+    beta = 5
     def __init__(self, initial_x, initial_y,road:Road,free_radius = 1., node_res_deg = 1.) -> None:
         self.centre_x = initial_x
         self.centre_y = initial_y
@@ -213,8 +241,10 @@ class Tyre:
                     (bc_2/self.beta + bc_1)*np.sin(self.beta * delta_theta))
                 current_node = current_node.prev
                 delta_theta = delta_theta + self.delta_theta
-            c.set_deformation_fit()
-            
+            try:
+                c.set_deformation_fit()
+            except:
+                pass
         #contact patches:
         for c in self.contacts:
             current_node = c.aft_separation_node
@@ -242,7 +272,6 @@ class Tyre:
         while (current_node := current_node.next) is not self.node_zero:
             current_node.x = self.centre_x + np.cos(current_node.theta + np.pi/2)*self.free_radius
             current_node.y = self.centre_y + np.sin(current_node.theta + np.pi/2)*self.free_radius
-
     def update_state(self, speed_y, speed_x):
         self.centre_x = self.centre_x + dt*speed_x
         self.centre_y = self.centre_y + dt*speed_y
@@ -306,23 +335,22 @@ class Tyre:
                          self.tyre.centre_y + np.sin(n.theta + np.pi/2)*(self.tyre.free_radius + n.deformation_fit),
                          marker="x", color="green")
         def set_deformation_fit(self):
-            poly_evaluator = fit_poly(
-                P1=np.array([self.aft_separation_node.theta,
-                          self.aft_separation_node.deformation,
-                          -self.aft_separation_node.road_dr_dtheta]),
+            poly_evaluator = construct_piecewise_poly(
+                P1=np.array([self.aft_separation_node.next.theta,
+                             self.aft_separation_node.next.road_dr,
+                             self.aft_separation_node.next.road_dr_dtheta]),
                 P2 = np.array([self.centre_node.theta,
                           self.centre_node.road_dr,
                           0]),
-                P3 = np.array([self.fore_separation_node.theta,
-                          self.fore_separation_node.deformation,
-                          self.fore_separation_node.road_dr_dtheta],
+                P3 = np.array([self.fore_separation_node.prev.theta,
+                          self.fore_separation_node.prev.road_dr,
+                          self.fore_separation_node.prev.road_dr_dtheta],
                           )
             )
             n = self.aft_separation_node
             while (n:=n.next) is not self.fore_separation_node.next:
                 n.deformation_fit = poly_evaluator(n.theta)
-
-
+    
     class node:
         def __init__(self,tyre, theta, next_node=None, previous_node =None):
             self.tyre:Tyre = tyre
@@ -330,7 +358,7 @@ class Tyre:
             self.prev: Tyre.node = previous_node
             self.theta = theta
             self.deformation = 0
-            self.deformation_fit = None
+            self.deformation_fit = 0
             self.x = self.tyre.centre_x + np.cos(self.theta + np.pi/2)*self.tyre.free_radius
             self.y = self.tyre.centre_y + np.sin(self.theta + np.pi/2)*self.tyre.free_radius
             self.penetration_point = None
@@ -373,8 +401,7 @@ class Tyre:
 
             return 0.5*self.road_ddr_dtheta > \
                     -2*(Tyre.beta**2)*(direction*self.road_dr_dtheta/Tyre.beta + self.road_dr)
-            
-                
+                          
 
             
             

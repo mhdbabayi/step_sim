@@ -3,4 +3,22 @@ implement penetration detection with:
     multiple contacts
     a centre node for each contact
     fore and aft boundary for each contact
+
+Before Force: 
+    Remove the step where iterate through the contact nodes to find contact limits
+    and do it in pre processing by pre calculating curvature radius of every point (already done)
+    and assuming the length of contact to be proportional to that. 
+
+Force: 
+    In theory, show whta the error would be like if we 
+    take only three points of a curve, namely:
+        peak; closest point to the centre of the tyre. dr/dtheta is zero and ddr/dtheta is positive
+        separation points; the fore and aft point of the contact patches
+    and use those points to estimate the pressure distribution of the contact but assuming force at any point in the contact to be proportional to the amount of radial deflecition
     
+    for 3D: 
+        in preprocessing, find the gradiant of the normals of the surface at every point
+        filter using the neighbour list method
+        using the same neighbour list, 
+
+Add a quarter car model on top of it to test.     
