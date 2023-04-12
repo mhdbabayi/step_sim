@@ -213,7 +213,7 @@ class Tyre:
                     (bc_2/self.beta + bc_1)*np.sin(self.beta * delta_theta))
                 current_node = current_node.prev
                 delta_theta = delta_theta + self.delta_theta
-            #c.set_deformation_fit()
+            c.set_deformation_fit()
             
         #contact patches:
         for c in self.contacts:
@@ -300,13 +300,18 @@ class Tyre:
             plt.plot(self.fore_penetration_node.penetration_point[0],
                      self.fore_penetration_node.penetration_point[1],
                      marker='o', color='green', markersize=5)
+            n = self.aft_separation_node
+            while(n:=n.next) is not self.fore_separation_node:
+                plt.plot(self.tyre.centre_x + np.cos(n.theta + np.pi/2)*(self.tyre.free_radius+n.deformation_fit),
+                         self.tyre.centre_y + np.sin(n.theta + np.pi/2)*(self.tyre.free_radius + n.deformation_fit),
+                         marker="x", color="green")
         def set_deformation_fit(self):
             poly_evaluator = fit_poly(
                 P1=np.array([self.aft_separation_node.theta,
                           self.aft_separation_node.deformation,
                           -self.aft_separation_node.road_dr_dtheta]),
                 P2 = np.array([self.centre_node.theta,
-                          self.centre_node.deformation,
+                          self.centre_node.road_dr,
                           0]),
                 P3 = np.array([self.fore_separation_node.theta,
                           self.fore_separation_node.deformation,
