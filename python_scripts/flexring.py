@@ -63,7 +63,24 @@ def polar_second_derivative(X , Y, DY , DDY):
     if np.isscalar(X):
         return ddr_dtheta.item()
     return ddr_dtheta
-    
+def fit_poly(P1, P2, P3):
+    x1, y1, dy1 = (P1[0], P1[1], P1[2])
+    x2, y2, dy2 = (P2[0], P2[1], P2[2])
+    x3, y3, dy3 = (P3[0], P3[1], P3[2])
+    A = np.array([
+        [x1**5, x1**4, x1**3, x1**2, x1, 1],
+        [5*x1**4, 4*x1**3, 3*x1**2, 2*x1, 1, 0],
+        [x2**5, x2**4, x2**3, x2**2, x2, 1],
+        [5*x2**4, 4*x2**3, 3*x2**2, 2*x2, 1, 0],
+        [x3**5, x3**4, x3**3, x3**2, x3, 1],
+        [5*x3**4, 4*x3**3, 3*x3**2, 2*x3, 1, 0]
+    ])
+
+    B = np.array([y1, dy1, y2, dy2, y3, dy3])
+
+    coefficients = np.linalg.solve(A, B)
+
+    return np.poly1d(coefficients)
 class Road:
     def __init__(self, step_width, step_height,step_profile_phase = np.pi, length = 5) -> None:
         self.length = length
@@ -85,7 +102,7 @@ class Road:
                                ((self.x[i+1]-self.x[i])*(self.x[i] - self.x[i-1])) 
 
 class Tyre:
-    beta = 5
+    beta = 3
     def __init__(self, initial_x, initial_y,road:Road,free_radius = 1., node_res_deg = 1.) -> None:
         self.centre_x = initial_x
         self.centre_y = initial_y
@@ -196,7 +213,8 @@ class Tyre:
                     (bc_2/self.beta + bc_1)*np.sin(self.beta * delta_theta))
                 current_node = current_node.prev
                 delta_theta = delta_theta + self.delta_theta
-
+            #c.set_deformation_fit()
+            
         #contact patches:
         for c in self.contacts:
             current_node = c.aft_separation_node
@@ -282,7 +300,24 @@ class Tyre:
             plt.plot(self.fore_penetration_node.penetration_point[0],
                      self.fore_penetration_node.penetration_point[1],
                      marker='o', color='green', markersize=5)
-            
+        def set_deformation_fit(self):
+            poly_evaluator = fit_poly(
+                P1=np.array([self.aft_separation_node.theta,
+                          self.aft_separation_node.deformation,
+                          -self.aft_separation_node.road_dr_dtheta]),
+                P2 = np.array([self.centre_node.theta,
+                          self.centre_node.deformation,
+                          0]),
+                P3 = np.array([self.fore_separation_node.theta,
+                          self.fore_separation_node.deformation,
+                          self.fore_separation_node.road_dr_dtheta],
+                          )
+            )
+            n = self.aft_separation_node
+            while (n:=n.next) is not self.fore_separation_node.next:
+                n.deformation_fit = poly_evaluator(n.theta)
+
+
     class node:
         def __init__(self,tyre, theta, next_node=None, previous_node =None):
             self.tyre:Tyre = tyre
@@ -290,6 +325,7 @@ class Tyre:
             self.prev: Tyre.node = previous_node
             self.theta = theta
             self.deformation = 0
+            self.deformation_fit = None
             self.x = self.tyre.centre_x + np.cos(self.theta + np.pi/2)*self.tyre.free_radius
             self.y = self.tyre.centre_y + np.sin(self.theta + np.pi/2)*self.tyre.free_radius
             self.penetration_point = None
@@ -330,7 +366,7 @@ class Tyre:
                   f'{-2*(Tyre.beta**2)*(direction*self.road_dr_dtheta/Tyre.beta + self.road_dr):0.3f}\t'\
                   f'{self.road_dy:0.3f}\t{self.road_ddy:0.3f}' )
 
-            return 0.9*self.road_ddr_dtheta > \
+            return 0.5*self.road_ddr_dtheta > \
                     -2*(Tyre.beta**2)*(direction*self.road_dr_dtheta/Tyre.beta + self.road_dr)
             
                 
