@@ -1,23 +1,28 @@
 import flexring
-
+import time
 import os
 import numpy as np
-os.system("clear")
 from matplotlib import pyplot as plt
-road = flexring.Road(step_width=0.05, step_height=0.1,step_profile_phase=np.pi)
-tyre = flexring.Tyre(initial_x=2.1, initial_y=0.3,road=road, free_radius=0.35, node_res_deg=0.5)
-speed_y = 0
+from resonance.linear_systems import SimpleQuarterCarSystem
+os.system("clear")
+road = flexring.Road(step_width=0.1, step_height=0.2,step_profile_phase=2*np.pi)
+tyre = flexring.Tyre(initial_x=2.2, initial_y=0.33
+,road=road, free_radius=0.35, node_res_deg=1)
+speed_y = 0.1
 speed_x = 1
 main_fig = plt.figure()
 y0 = 0.36
-for i in range(20):    
+
+for i in range(50):    
     '''
     tyre = flexring.Tyre(initial_x=x0, initial_y=y0,road=road, free_radius=0.35)
     tyre.update_penetrations()
     tyre.update_contacts()
     tyre.update_deformation()
     '''
+    st = time.time()
     tyre.update_state(speed_x=speed_x, speed_y=speed_y)
+    print(f'{1000*(time.time() - st):.1f} ms')
     tyre.draw()
     plt.plot(road.x, road.y,'.-')
     plt.gca().set_aspect('equal')

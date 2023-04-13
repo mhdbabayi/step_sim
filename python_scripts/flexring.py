@@ -100,7 +100,6 @@ def construct_piecewise_poly(start, end, peak):
             return a2*x**2 + b2*x + c2
 
     return piecewise_polynomial
-
 class Road:
     def __init__(self, step_width, step_height,step_profile_phase = np.pi, length = 5) -> None:
         self.length = length
@@ -247,15 +246,25 @@ class Tyre:
     def draw(self):
         plt.plot(self.centre_x , self.centre_y, 'r*')
         n = self.node_zero.next
+        raw_x = []
+        raw_y = []
+        penetration_x = []
+        penetration_y = []
+        deformation_x = []
+        deformation_y = []
         while n is not self.node_zero:
-            plt.plot(n.x , n.y, 'r.')
+            raw_x.append(n.x)
+            raw_y.append(n.y)
             if n.penetration_point is not None:
-                plt.plot(n.penetration_point[0], n.penetration_point[1] , 'm.')
+                penetration_x.append(n.penetration_point[0])
+                penetration_y.append(n.penetration_point[1])
             if n.deformation is not None:
-                plt.plot(self.centre_x + np.cos(n.theta + np.pi/2)*(self.free_radius+n.deformation),
-                        self.centre_y + np.sin(n.theta + np.pi/2)*(self.free_radius + n.deformation),
-                        marker=".", color="blue")
+                deformation_x.append(self.centre_x + np.cos(n.theta + np.pi/2)*(self.free_radius + n.deformation))
+                deformation_y.append(self.centre_y + np.sin(n.theta + np.pi/2)*(self.free_radius + n.deformation))
             n =n.next
+        plt.plot(raw_x , raw_y)
+        plt.plot(penetration_x ,penetration_y, 'm.')
+        plt.plot(deformation_x , deformation_y,marker=".", color="blue")
         [c.draw() for c in self.contacts]
     def update_node_positions(self):
         current_node = self.node_zero
@@ -300,7 +309,7 @@ class Tyre:
             while not self.fore_separation_node.seperation_condition(direction=1) and\
                     self.fore_separation_node.next is not self.fore_penetration_node:
                 self.fore_separation_node = self.fore_separation_node.next
-            print('fore done')
+            # print('fore done')
             self.aft_separation_node = self.centre_node
             while not self.aft_separation_node.seperation_condition(direction=-1) and\
                     self.aft_separation_node.prev is not self.aft_penetration_node:
@@ -322,7 +331,7 @@ class Tyre:
                      self.fore_penetration_node.penetration_point[1],
                      marker='o', color='green', markersize=5)
             n = self.aft_separation_node
-            while(n:=n.next) is not self.fore_separation_node:
+            while(n:=n.next) is not self.fore_separation_node.next:
                 plt.plot(self.tyre.centre_x + np.cos(n.theta + np.pi/2)*(self.tyre.free_radius+n.deformation_fit),
                          self.tyre.centre_y + np.sin(n.theta + np.pi/2)*(self.tyre.free_radius + n.deformation_fit),
                          marker="x", color="green")
@@ -383,9 +392,9 @@ class Tyre:
             second derivative, i.e., the road is curaving away from the tyre 
             faster than the profile 
             '''
-            print(f'{self.road_ddr_dtheta:0.3f}\t{self.road_dr_dtheta:0.3f}\t'\
-                  f'{-2*(Tyre.beta**2)*(direction*self.road_dr_dtheta/Tyre.beta + self.road_dr):0.3f}\t'\
-                  f'{self.road_dy:0.3f}\t{self.road_ddy:0.3f}' )
+            # print(f'{self.road_ddr_dtheta:0.3f}\t{self.road_dr_dtheta:0.3f}\t'\
+            #       f'{-2*(Tyre.beta**2)*(direction*self.road_dr_dtheta/Tyre.beta + self.road_dr):0.3f}\t'\
+            #       f'{self.road_dy:0.3f}\t{self.road_ddy:0.3f}' )
 
             return 0.5*self.road_ddr_dtheta > \
                     -2*(Tyre.beta**2)*(direction*self.road_dr_dtheta/Tyre.beta + self.road_dr)
