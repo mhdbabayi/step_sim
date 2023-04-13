@@ -1,10 +1,11 @@
 import flexring
+
 import os
 import numpy as np
 os.system("clear")
 from matplotlib import pyplot as plt
 road = flexring.Road(step_width=0.05, step_height=0.1,step_profile_phase=np.pi)
-tyre = flexring.Tyre(initial_x=2.3, initial_y=0.3,road=road, free_radius=0.35, node_res_deg=0.5)
+tyre = flexring.Tyre(initial_x=2.1, initial_y=0.3,road=road, free_radius=0.35, node_res_deg=0.5)
 speed_y = 0
 speed_x = 1
 main_fig = plt.figure()

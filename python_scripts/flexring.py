@@ -67,6 +67,7 @@ def fit_poly(P1, P2, P3):
     x1, y1, dy1 = (P1[0], P1[1], P1[2])
     x2, y2, dy2 = (P2[0], P2[1], P2[2])
     x3, y3, dy3 = (P3[0], P3[1], P3[2])
+
     A = np.array([
         [x1**5, x1**4, x1**3, x1**2, x1, 1],
         [5*x1**4, 4*x1**3, 3*x1**2, 2*x1, 1, 0],
@@ -78,29 +79,20 @@ def fit_poly(P1, P2, P3):
 
     B = np.array([y1, dy1, y2, dy2, y3, dy3])
     coefficients = np.linalg.solve(A, B)
-
+    
     return np.poly1d(coefficients)
-def construct_piecewise_poly(P1, P2, P3):
-    x1, y1, dy1 = (P1[0], P1[1], P1[2])
-    x2, y2, dy2 = (P3[0], P3[1], P3[2])
-    x3, y3 = (P2[0], P2[1])
-    '''
-    A1 = np.array([[x1**2, x1, 1], [2*x1, 1, 0], [x3**2, x3, 1]])
-    B1 = np.array([y1, dy1, y3])
-    a1, b1, c1 = np.linalg.solve(A1, B1)
+def construct_piecewise_poly(start, end, peak):
+    x1, y1 = (start[0],start[1])
+    x2, y2 = (end[0], end[1])
+    x3, y3 = (peak[0], peak[1])
 
-    A2 = np.array([[x2**2, x2, 1], [2*x2, 1, 0], [x3**2, x3, 1]])
-    B2 = np.array([y2, dy2, y3])
-    a2, b2, c2 = np.linalg.solve(A2, B2)
-    '''
-    c1 = y1
-    b1 = dy1 - 2*c1/x1
-    a1 = (y3 - c1 - b1*x3) / x3**2
+    a1 = (y1-y3)/((x1-x3)**2)
+    a2 = (y2 -y3)/(x2**2 - 2*x2*x3 + x3**2)
+    b1 = -(2*x3*y1 - 2*x3*y3)/((x1-x3)**2)
+    b2 = -(2*x3*y2 - 2*x3*y3)/(x2**2 - 2*x2*x3 + x3**2)
+    c1 = (y3*x1**2 - 2*y3*x1*x3 + y1*x3**2)/((x1 - x3)**2)
+    c2 = (y3*x2**2 - 2*y3*x2*x3 + y2*x3**2)/(x2**2 - 2*x2*x3 + x3**2)
 
-    # Coefficients for Q2(x)
-    c2 = y2
-    b2 = dy2 - 2*c2/x2
-    a2 = (y3 - c2 - b2*x3) / x3**2
     def piecewise_polynomial(x):
         if x <= x3:
             return a1*x**2 + b1*x + c1
@@ -336,16 +328,12 @@ class Tyre:
                          marker="x", color="green")
         def set_deformation_fit(self):
             poly_evaluator = construct_piecewise_poly(
-                P1=np.array([self.aft_separation_node.next.theta,
-                             self.aft_separation_node.next.road_dr,
-                             self.aft_separation_node.next.road_dr_dtheta]),
-                P2 = np.array([self.centre_node.theta,
-                          self.centre_node.road_dr,
-                          0]),
-                P3 = np.array([self.fore_separation_node.prev.theta,
-                          self.fore_separation_node.prev.road_dr,
-                          self.fore_separation_node.prev.road_dr_dtheta],
-                          )
+                start=np.array([self.aft_separation_node.next.theta,
+                             self.aft_separation_node.next.road_dr]),
+                peak = np.array([self.centre_node.theta,
+                          self.centre_node.road_dr]),
+                end = np.array([self.fore_separation_node.prev.theta,
+                          self.fore_separation_node.prev.road_dr])
             )
             n = self.aft_separation_node
             while (n:=n.next) is not self.fore_separation_node.next:
