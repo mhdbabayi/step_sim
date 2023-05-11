@@ -127,15 +127,14 @@ class Road:
             self.ddydx[i] = (self.y[i+1] + self.y[i-1] - 2*self.y[i])/\
                                ((self.x[i+1]-self.x[i])*(self.x[i] - self.x[i-1])) 
 
-class Tyre:
+class Tyre(phsx.RigidBody):
     beta = 5
     def __init__(self, initial_x, initial_y,road:Road,
                  free_radius = 1., node_res_deg = 1.,
                  x_speed = 0, y_speed = 0) -> None:
-        self.centre_x = initial_x
-        self.centre_y = initial_y
-        self.x_dot = x_speed
-        self.y_dot = y_speed
+        super().__init__(mass = 50, initial_x=initial_x, initial_y = initial_y,
+                       initial_x_dot = x_speed, initial_y_dot = y_speed,constraint_type='100'
+                       )
         self.road = road
         self.free_radius = free_radius
         self.delta_theta = np.deg2rad(node_res_deg)
@@ -155,7 +154,7 @@ class Tyre:
         while current_node is not self.node_zero:
             current_node.penetration_point=None
             for i  in range(len(self.road.x[0:-1])):
-                t =intersection((self.centre_x, self.centre_y),
+                t =intersection((self.states['x'], self.states['y']),
                                 (current_node.x, current_node.y),
                                 (self.road.x[i], self.road.y[i]),
                                 (self.road.x[i+1], self.road.y[i+1]))
@@ -164,18 +163,18 @@ class Tyre:
                         (self.road.x[i] + t*(self.road.x[i+1] - self.road.x[i]),
                         self.road.y[i] + t*(self.road.y[i+1] - self.road.y[i])))
                     current_node.road_dr = np.linalg.norm(
-                        [self.centre_x , self.centre_y] - 
+                        [self.states['x'] , self.states['y']] - 
                         current_node.penetration_point
                         ) - self.free_radius
                     current_node.road_dy = self.road.dydx[i] + t*(self.road.dydx[i+1] - self.road.dydx[i])
                     current_node.road_ddy = self.road.ddydx[i] + t*(self.road.ddydx[i+1] - self.road.ddydx[i])
                     current_node.road_dr_dtheta = polar_derivative(
-                        X = current_node.penetration_point[0] - self.centre_x,
-                        Y = current_node.penetration_point[1] - self.centre_y,
+                        X = current_node.penetration_point[0] - self.states['x'],
+                        Y = current_node.penetration_point[1] - self.states['y'],
                         DY = current_node.road_dy)
                     current_node.road_ddr_dtheta = polar_second_derivative(
-                        X = current_node.penetration_point[0] - self.centre_x,
-                        Y = current_node.penetration_point[1] - self.centre_y,
+                        X = current_node.penetration_point[0] - self.states['x'],
+                        Y = current_node.penetration_point[1] - self.states['y'],
                         DY = current_node.road_dy,
                         DDY= current_node.road_ddy)
                     break
@@ -194,11 +193,11 @@ class Tyre:
                 y2 = current.next.penetration_point[1]
                 current.road_dy = (y2 - y0)/((h0+h1))
                 current.road_ddy = (y2 + y0 - 2*y1)/(h1*h0)
-                current.road_dr_dtheta = polar_derivative(X=current.x - self.centre_x,
-                                                     Y = current.y - self.centre_y,
+                current.road_dr_dtheta = polar_derivative(X=current.x - self.states['x'],
+                                                     Y = current.y - self.states['y'],
                                                      DY = current.road_dy)
-                current.road_ddr_dtheta = polar_second_derivative(X = current.x - self.centre_x,
-                                                             Y = current.y -self.centre_y,
+                current.road_ddr_dtheta = polar_second_derivative(X = current.x - self.states['x'],
+                                                             Y = current.y -self.states['y'],
                                                              DY = current.road_dy, DDY= current.road_ddy)
             current = current.next
     def update_contacts(self):
@@ -262,7 +261,7 @@ class Tyre:
                 #current_node.deformation = 0
                 current_node = current_node.next
     def draw(self):
-        plt.plot(self.centre_x , self.centre_y, 'r*')
+        plt.plot(self.states['x'] , self.states['y'], 'r*')
         n = self.node_zero.next
         raw_x = []
         raw_y = []
@@ -277,8 +276,8 @@ class Tyre:
                 penetration_x.append(n.penetration_point[0])
                 penetration_y.append(n.penetration_point[1])
             if n.deformation is not None:
-                deformation_x.append(self.centre_x + np.cos(n.theta + np.pi/2)*(self.free_radius + n.deformation))
-                deformation_y.append(self.centre_y + np.sin(n.theta + np.pi/2)*(self.free_radius + n.deformation))
+                deformation_x.append(self.states['x'] + np.cos(n.theta + np.pi/2)*(self.free_radius + n.deformation))
+                deformation_y.append(self.states['y'] + np.sin(n.theta + np.pi/2)*(self.free_radius + n.deformation))
             n =n.next
         plt.plot(raw_x , raw_y)
         plt.plot(penetration_x ,penetration_y, 'm.')
@@ -286,15 +285,14 @@ class Tyre:
         [c.draw() for c in self.contacts]
     def update_node_positions(self):
         current_node = self.node_zero
-        current_node.x = self.centre_x + np.cos(current_node.theta + np.pi/2)*self.free_radius
-        current_node.y = self.centre_y + np.sin(current_node.theta + np.pi/2)*self.free_radius
+        current_node.x = self.states['x'] + np.cos(current_node.theta + np.pi/2)*self.free_radius
+        current_node.y = self.states['y'] + np.sin(current_node.theta + np.pi/2)*self.free_radius
         while (current_node := current_node.next) is not self.node_zero:
-            current_node.x = self.centre_x + np.cos(current_node.theta + np.pi/2)*self.free_radius
-            current_node.y = self.centre_y + np.sin(current_node.theta + np.pi/2)*self.free_radius
-    def update_state(self, speed_y, speed_x):
-        self.centre_x = self.centre_x + dt*speed_x
-        self.centre_y = self.centre_y + dt*speed_y
+            current_node.x = self.states['x'] + np.cos(current_node.theta + np.pi/2)*self.free_radius
+            current_node.y = self.states['y'] + np.sin(current_node.theta + np.pi/2)*self.free_radius
+    def update_states(self):
         self.contacts = []
+        super().update_states()
         self.update_node_positions()
         self.update_penetrations()
         self.update_contacts()
@@ -312,10 +310,10 @@ class Tyre:
             self.set_boundary_conditions()
         def set_penetration_limits(self):
             self.centre_node = self.fore_penetration_node = self.aft_penetration_node
-            min_distance = np.linalg.norm(np.array([self.tyre.centre_x, self.tyre.centre_y])
+            min_distance = np.linalg.norm(np.array([self.tyre.states['x'], self.tyre.states['y']])
                                            - np.array(self.centre_node.penetration_point))
             while self.fore_penetration_node.next.penetration_point is not None:
-                new_distance = np.linalg.norm(np.array([self.tyre.centre_x, self.tyre.centre_y])
+                new_distance = np.linalg.norm(np.array([self.tyre.states['x'], self.tyre.states['y']])
                                            - np.array(self.fore_penetration_node.penetration_point))
                 if min_distance > new_distance:
                     min_distance = new_distance
@@ -351,8 +349,8 @@ class Tyre:
             n = self.aft_separation_node
 
             while(n:=n.next) is not self.fore_separation_node and n.road_dr is not None:
-                plt.plot(self.tyre.centre_x + np.cos(n.theta + np.pi/2)*(self.tyre.free_radius+n.road_dr),
-                         self.tyre.centre_y + np.sin(n.theta + np.pi/2)*(self.tyre.free_radius + n.road_dr),
+                plt.plot(self.tyre.states['x'] + np.cos(n.theta + np.pi/2)*(self.tyre.free_radius+n.road_dr),
+                         self.tyre.states['y'] + np.sin(n.theta + np.pi/2)*(self.tyre.free_radius + n.road_dr),
                          marker="x", color="black")
         def set_deformation_fit(self):
             poly_evaluator = construct_piecewise_poly(
@@ -375,8 +373,8 @@ class Tyre:
             self.theta = theta
             self.deformation = 0
             self.deformation_fit = 0
-            self.x = self.tyre.centre_x + np.cos(self.theta + np.pi/2)*self.tyre.free_radius
-            self.y = self.tyre.centre_y + np.sin(self.theta + np.pi/2)*self.tyre.free_radius
+            self.x = self.tyre.states['x'] + np.cos(self.theta + np.pi/2)*self.tyre.free_radius
+            self.y = self.tyre.states['y'] + np.sin(self.theta + np.pi/2)*self.tyre.free_radius
             self.penetration_point = None
             self.road_dr = None # amount of penetration
             self.road_dy = None
@@ -420,7 +418,7 @@ class Tyre:
                                 
 class SprungMass(phsx.RigidBody):
     def __init__(self,
-                tyre_inst:flx.Tyre,
+                tyre_inst:Tyre,
                 mass,
                 speed_x=0,
                 speed_y=0,
@@ -428,8 +426,8 @@ class SprungMass(phsx.RigidBody):
                 natural_frequency_hz = 1.5,
                 damping_ratio = 0.5):
         self.tyre_inst = tyre_inst
-        super.__init__(mass=mass, initial_x=tyre_inst.centre_x,
-                        initial_y = tyre_inst.centre_y + spring_neutral_length,
+        super().__init__(mass=mass, initial_x=tyre_inst.states['x'],
+                        initial_y = tyre_inst.states['y'] + spring_neutral_length,
                             initial_x_dot = speed_x, initial_y_dot = speed_y,
                             constraint_type = '001')
         self.natural_freq_rad = 360*np.deg2rad(natural_frequency_hz)
@@ -439,6 +437,6 @@ class SprungMass(phsx.RigidBody):
         self.damping_coefficient = 2*self.natural_freq_rad * self.mass * damping_ratio
     def update_forces(self):
         spring_force = (self.spring_neutral_length - 
-        (self.states['y'] - self.tyre_inst.centre_y))
+        (self.states['y'] - self.tyre_inst.states['y']))
         damper_force = (self.tyre_inst.y_dot  - self.states['y_dot']) * self.damping_coefficient
         self.forces['y'] = spring_force + damper_force            

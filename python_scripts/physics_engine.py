@@ -28,10 +28,10 @@ class RigidBody(DynamicObject):
                 constraint_type:str,
                 initial_force_y = 0,
                 initial_force_x = 0) -> None:
-        self.states = {'x', initial_x, 'y', initial_y,
-                        'x_dot', initial_x_dot,'y_dot',initial_y_dot,
-                        'x_dot_dot',0, 'y_dot_dot', 0}
-        self.forces = {'x', initial_force_x, 'y', initial_force_y, 'theta', 0}
+        self.states = {'x': initial_x, 'y': initial_y,
+                        'x_dot':initial_x_dot,'y_dot':initial_y_dot,
+                        'x_dot_dot':0, 'y_dot_dot': 0}
+        self.forces = {'x': initial_force_x, 'y': initial_force_y, 'theta': 0}
         self.mass = mass
         '''
         the constraint is a string with three digits, each representing a bit

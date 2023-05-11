@@ -6,7 +6,8 @@ from matplotlib import pyplot as plt
 os.system("clear")
 
 road = flexring.Road(step_width=0.05, step_height=0.1,step_profile_phase=np.pi)
-tyre = flexring.Tyre(initial_x=2.3, initial_y=0.3,road=road, free_radius=0.35)
+tyre = flexring.Tyre(initial_x=2, initial_y=0.3,road=road, free_radius=0.35,
+                     x_speed=1)
 speed_y = 0
 speed_x = 1
 main_fig = plt.figure()
@@ -19,7 +20,7 @@ for i in range(50):
     tyre.update_deformation()
     '''
     st = time.time()
-    tyre.update_state(speed_x=speed_x, speed_y=speed_y)
+    tyre.update_states()
     print(f'{1000*(time.time() - st):.1f} ms')
     tyre.draw()
     plt.plot(road.x, road.y,'.-')
@@ -28,8 +29,8 @@ for i in range(50):
     if len(tyre.contacts) > 0:
         c = tyre.contacts[0]
         n = c.aft_penetration_node
-        plt.plot((tyre.centre_x, c.centre_node.x),
-                 (tyre.centre_y , c.centre_node.y))
+        plt.plot((tyre.states['x'], c.centre_node.x),
+                 (tyre.states['x'] , c.centre_node.y))
         plt.xlim((c.centre_node.x - tyre.free_radius
                   ,c.centre_node.x + tyre.free_radius))
         plt.ylim((c.centre_node.y - tyre.free_radius
