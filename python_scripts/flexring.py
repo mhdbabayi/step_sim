@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import physics_engine as phsx
 '''
 sign convention: 
 Tyre node zero is at the top and the nodes go counter-clockwise
@@ -128,9 +129,13 @@ class Road:
 
 class Tyre:
     beta = 5
-    def __init__(self, initial_x, initial_y,road:Road,free_radius = 1., node_res_deg = 1.) -> None:
+    def __init__(self, initial_x, initial_y,road:Road,
+                 free_radius = 1., node_res_deg = 1.,
+                 x_speed = 0, y_speed = 0) -> None:
         self.centre_x = initial_x
         self.centre_y = initial_y
+        self.x_dot = x_speed
+        self.y_dot = y_speed
         self.road = road
         self.free_radius = free_radius
         self.delta_theta = np.deg2rad(node_res_deg)
@@ -412,7 +417,28 @@ class Tyre:
 
             return 0.5*self.road_ddr_dtheta > \
                     -2*(Tyre.beta**2)*(direction*self.road_dr_dtheta/Tyre.beta + self.road_dr)
-                          
-
-            
-            
+                                
+class SprungMass(phsx.RigidBody):
+    def __init__(self,
+                tyre_inst:flx.Tyre,
+                mass,
+                speed_x=0,
+                speed_y=0,
+                spring_neutral_length = 0.3,
+                natural_frequency_hz = 1.5,
+                damping_ratio = 0.5):
+        self.tyre_inst = tyre_inst
+        super.__init__(mass=mass, initial_x=tyre_inst.centre_x,
+                        initial_y = tyre_inst.centre_y + spring_neutral_length,
+                            initial_x_dot = speed_x, initial_y_dot = speed_y,
+                            constraint_type = '001')
+        self.natural_freq_rad = 360*np.deg2rad(natural_frequency_hz)
+        self.damping_ratio = damping_ratio
+        self.spring_neutral_length = spring_neutral_length
+        self.spring_stiffness = (self.natural_freq_rad)**2 * self.mass
+        self.damping_coefficient = 2*self.natural_freq_rad * self.mass * damping_ratio
+    def update_forces(self):
+        spring_force = (self.spring_neutral_length - 
+        (self.states['y'] - self.tyre_inst.centre_y))
+        damper_force = (self.tyre_inst.y_dot  - self.states['y_dot']) * self.damping_coefficient
+        self.forces['y'] = spring_force + damper_force            
