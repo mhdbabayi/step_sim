@@ -3,6 +3,7 @@ import time
 import os
 import numpy as np
 from matplotlib import pyplot as plt
+<<<<<<< HEAD
 from resonance.linear_systems import SimpleQuarterCarSystem
 os.system("clear")
 road = flexring.Road(step_width=0.1, step_height=0.2,step_profile_phase=2*np.pi)
@@ -13,6 +14,14 @@ speed_x = 1
 main_fig = plt.figure()
 y0 = 0.36
 
+=======
+road = flexring.Road(step_width=0.05, step_height=0.1,step_profile_phase=np.pi)
+tyre = flexring.Tyre(initial_x=2.3, initial_y=0.3,road=road, free_radius=0.35)
+speed_y = 0
+speed_x = 1
+main_fig = plt.figure()
+y0 = 0.36
+>>>>>>> 37601b0 (fixed the plotting of the contact patch nodes)
 for i in range(50):    
     '''
     tyre = flexring.Tyre(initial_x=x0, initial_y=y0,road=road, free_radius=0.35)

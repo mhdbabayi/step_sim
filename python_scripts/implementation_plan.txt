@@ -3,11 +3,19 @@ implement penetration detection with:
     multiple contacts
     a centre node for each contact
     fore and aft boundary for each contact
+        make sure it's continueous between frames
+    build a physics engine to test it (a quarter car)
+    
 
 Before Force: 
     Remove the step where iterate through the contact nodes to find contact limits
     and do it in pre processing by pre calculating curvature radius of every point (already done)
-    and assuming the length of contact to be proportional to that. 
+    and assuming the length of contact to be proportional to that.
+    The steps are as follows: 
+        1- detect collisions
+        2- find the closest point in collision, this point is definitely in contact
+        3- find the boundaries of the collision;
+
 
 Force: 
     In theory, show whta the error would be like if we 

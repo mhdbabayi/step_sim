@@ -100,6 +100,12 @@ def construct_piecewise_poly(start, end, peak):
             return a2*x**2 + b2*x + c2
 
     return piecewise_polynomial
+
+def beam_solution(beta,theta,boundary_deformation, boundary_derivative):
+    return np.exp(-beta*theta)*\
+            (boundary_deformation*np.cos(beta*theta) +
+            (boundary_derivative/beta + boundary_deformation)*np.sin(beta*theta))
+    
 class Road:
     def __init__(self, step_width, step_height,step_profile_phase = np.pi, length = 5) -> None:
         self.length = length
@@ -130,6 +136,7 @@ class Tyre:
         self.delta_theta = np.deg2rad(node_res_deg)
         self.node_zero = Tyre.node(self,theta =0)
         theta = 0
+        # generate the nodes, with node zero at the top
         last_generated_node = self.node_zero
         while (theta<2*np.pi):
             theta = theta + np.deg2rad(node_res_deg)
@@ -214,9 +221,12 @@ class Tyre:
             bc_2 = current_node.road_dr_dtheta
             while np.exp(-self.beta*delta_theta) > 0.01 and current_node is not self.node_zero:
                 current_node.deformation = current_node.deformation+\
-                    np.exp(-self.beta*delta_theta)*\
-                    (bc_1*np.cos(self.beta*delta_theta) +\
-                    (bc_2/self.beta + bc_1)*np.sin(self.beta * delta_theta))
+                    beam_solution(
+                    beta=self.beta,
+                    theta=delta_theta,
+                    boundary_deformation=bc_1,
+                    boundary_derivative=bc_2
+                    )
                 current_node = current_node.next
                 delta_theta = delta_theta + self.delta_theta
             #aft
@@ -227,15 +237,18 @@ class Tyre:
             bc_2 = -current_node.road_dr_dtheta
             while np.exp(-self.beta*delta_theta) > 0.01 and current_node is not self.node_zero:
                 current_node.deformation = current_node.deformation +\
-                    np.exp(-self.beta*delta_theta)*\
-                    (bc_1*np.cos(self.beta*delta_theta) +\
-                    (bc_2/self.beta + bc_1)*np.sin(self.beta * delta_theta))
+                    beam_solution(
+                    beta=self.beta,
+                    theta=delta_theta,
+                    boundary_deformation=bc_1,
+                    boundary_derivative=bc_2
+                    )
                 current_node = current_node.prev
                 delta_theta = delta_theta + self.delta_theta
             try:
                 c.set_deformation_fit()
-            except:
-                pass
+            except Exception as e:
+                print(e)
         #contact patches:
         for c in self.contacts:
             current_node = c.aft_separation_node
@@ -331,10 +344,11 @@ class Tyre:
                      self.fore_penetration_node.penetration_point[1],
                      marker='o', color='green', markersize=5)
             n = self.aft_separation_node
-            while(n:=n.next) is not self.fore_separation_node.next:
-                plt.plot(self.tyre.centre_x + np.cos(n.theta + np.pi/2)*(self.tyre.free_radius+n.deformation_fit),
-                         self.tyre.centre_y + np.sin(n.theta + np.pi/2)*(self.tyre.free_radius + n.deformation_fit),
-                         marker="x", color="green")
+
+            while(n:=n.next) is not self.fore_separation_node and n.road_dr is not None:
+                plt.plot(self.tyre.centre_x + np.cos(n.theta + np.pi/2)*(self.tyre.free_radius+n.road_dr),
+                         self.tyre.centre_y + np.sin(n.theta + np.pi/2)*(self.tyre.free_radius + n.road_dr),
+                         marker="x", color="black")
         def set_deformation_fit(self):
             poly_evaluator = construct_piecewise_poly(
                 start=np.array([self.aft_separation_node.next.theta,
