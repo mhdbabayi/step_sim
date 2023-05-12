@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import physics_engine as phsx
+from euclid3 import Vector2
 '''
 sign convention: 
 Tyre node zero is at the top and the nodes go counter-clockwise
@@ -136,7 +137,7 @@ class Tyre(phsx.RigidBody):
         super().__init__(mass = 50, initial_x=initial_x, initial_y = initial_y,
                        initial_x_dot = x_speed, initial_y_dot = y_speed,constraint_type='101'
                        )
-        self.stiffness = 550000.
+        self.stiffness = 100000.
         self.road = road
         self.free_radius = free_radius
         self.delta_theta = np.deg2rad(node_res_deg)
@@ -300,12 +301,10 @@ class Tyre(phsx.RigidBody):
         self.update_deformation()
         super().update_states(external_forces)
     def update_forces(self, external_forces):
+        super().update_forces(external_forces)
         for c in self.contacts:
-            contact_forces = c.get_forces()
-            self.forces['x'] = self.forces['x'] + contact_forces['x']
-            self.forces['y'] = self.forces['y'] + contact_forces['y']
-        self.forces['x'] = self.forces['x'] + external_forces['x']
-        self.forces['y'] = self.forces['y'] + external_forces['y']
+            self.forces = self.forces + c.get_forces()
+        
     # subcalsses
     class contact:
         def __init__(self,tyre, start_node) -> None:
@@ -376,8 +375,7 @@ class Tyre(phsx.RigidBody):
         def get_forces(self):
             total_force = self.centre_node.road_dr * self.tyre.stiffness
             angle = self.centre_node.theta + np.pi/2
-            return {'x': total_force*np.cos(angle), 
-                    'y':total_force*np.sin(angle)}
+            return Vector2(total_force* np.cos(angle), total_force * np.sin(angle))
     class node:
         def __init__(self,tyre, theta, next_node=None, previous_node =None):
             self.tyre:Tyre = tyre
@@ -449,13 +447,15 @@ class SprungMass(phsx.RigidBody):
         self.spring_stiffness = (self.natural_freq_rad)**2 * self.mass
         self.damping_coefficient = 2*self.natural_freq_rad * self.mass * damping_ratio
         self.spring_preload = self.mass * 9.8
-        self.spring_force = self.spring_preload 
-        self.damper_force = 0
-    def update_forces(self):
-        self.spring_force = (self.spring_neutral_length - 
-        (self.states['y'] - self.tyre_inst.states['y'])) + self.spring_preload
-        self.damper_force = (self.tyre_inst.states['y_dot']  - self.states['y_dot']) * self.damping_coefficient
-        self.forces['y'] = self.spring_force + self.damper_force - self.mass * 9.8          
+        self.spring_force = Vector2(0 ,self.spring_preload) 
+        self.damper_force = Vector2(0 , 0)
+    def update_forces(self, external_forces):
+        super().update_forces()
+        self.spring_force = Vector2(0 ,(self.spring_neutral_length - 
+        (self.states['y'] - self.tyre_inst.states['y'])) + self.spring_preload)
+        self.damper_force = Vector2(0,(self.tyre_inst.states['y_dot']  - self.states['y_dot']) * self.damping_coefficient)
+        gravity_force = Vector2(0 , -self.mass*9.8)
+        self.forces =  self.spring_force + self.damper_force + gravity_force       
     def draw(self):
         width = self.tyre_inst.free_radius * 2
         rect = patches.Rectangle((self.states['x']-width/2, self.states['y']-width/2),

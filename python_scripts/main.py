@@ -19,8 +19,7 @@ for i in range(50):
     tyre.update_deformation()
     '''
     st = time.time()
-    tyre.update_states()
-    q_car.update_forces()
+    tyre.update_states(-(q_car.damper_force + q_car.spring_force))
     q_car.update_states()
     print(f'{1000*(time.time() - st):.1f} ms/t {q_car.states["y_dot"]:0.3f}')
     tyre.draw()
