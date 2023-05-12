@@ -134,8 +134,9 @@ class Tyre(phsx.RigidBody):
                  free_radius = 1., node_res_deg = 1.,
                  x_speed = 0, y_speed = 0) -> None:
         super().__init__(mass = 50, initial_x=initial_x, initial_y = initial_y,
-                       initial_x_dot = x_speed, initial_y_dot = y_speed,constraint_type='100'
+                       initial_x_dot = x_speed, initial_y_dot = y_speed,constraint_type='101'
                        )
+        self.stiffness = 550000.
         self.road = road
         self.free_radius = free_radius
         self.delta_theta = np.deg2rad(node_res_deg)
@@ -291,13 +292,20 @@ class Tyre(phsx.RigidBody):
         while (current_node := current_node.next) is not self.node_zero:
             current_node.x = self.states['x'] + np.cos(current_node.theta + np.pi/2)*self.free_radius
             current_node.y = self.states['y'] + np.sin(current_node.theta + np.pi/2)*self.free_radius
-    def update_states(self):
+    def update_states(self, external_forces=0):
         self.contacts = []
-        super().update_states()
         self.update_node_positions()
         self.update_penetrations()
         self.update_contacts()
         self.update_deformation()
+        super().update_states(external_forces)
+    def update_forces(self, external_forces):
+        for c in self.contacts:
+            contact_forces = c.get_forces()
+            self.forces['x'] = self.forces['x'] + contact_forces['x']
+            self.forces['y'] = self.forces['y'] + contact_forces['y']
+        self.forces['x'] = self.forces['x'] + external_forces['x']
+        self.forces['y'] = self.forces['y'] + external_forces['y']
     # subcalsses
     class contact:
         def __init__(self,tyre, start_node) -> None:
@@ -365,7 +373,11 @@ class Tyre(phsx.RigidBody):
             n = self.aft_separation_node
             while (n:=n.next) is not self.fore_separation_node.next:
                 n.deformation_fit = poly_evaluator(n.theta)
-    
+        def get_forces(self):
+            total_force = self.centre_node.road_dr * self.tyre.stiffness
+            angle = self.centre_node.theta + np.pi/2
+            return {'x': total_force*np.cos(angle), 
+                    'y':total_force*np.sin(angle)}
     class node:
         def __init__(self,tyre, theta, next_node=None, previous_node =None):
             self.tyre:Tyre = tyre
@@ -436,11 +448,14 @@ class SprungMass(phsx.RigidBody):
         self.spring_neutral_length = spring_neutral_length
         self.spring_stiffness = (self.natural_freq_rad)**2 * self.mass
         self.damping_coefficient = 2*self.natural_freq_rad * self.mass * damping_ratio
+        self.spring_preload = self.mass * 9.8
+        self.spring_force = self.spring_preload 
+        self.damper_force = 0
     def update_forces(self):
-        spring_force = (self.spring_neutral_length - 
-        (self.states['y'] - self.tyre_inst.states['y']))
-        damper_force = (self.tyre_inst.states['y_dot']  - self.states['y_dot']) * self.damping_coefficient
-        self.forces['y'] = spring_force + damper_force            
+        self.spring_force = (self.spring_neutral_length - 
+        (self.states['y'] - self.tyre_inst.states['y'])) + self.spring_preload
+        self.damper_force = (self.tyre_inst.states['y_dot']  - self.states['y_dot']) * self.damping_coefficient
+        self.forces['y'] = self.spring_force + self.damper_force - self.mass * 9.8          
     def draw(self):
         width = self.tyre_inst.free_radius * 2
         rect = patches.Rectangle((self.states['x']-width/2, self.states['y']-width/2),

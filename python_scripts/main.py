@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 os.system("clear")
 
 road = flx.Road(step_width=0.05, step_height=0.1,step_profile_phase=np.pi)
-tyre = flx.Tyre(initial_x=2, initial_y=0.3,road=road, free_radius=0.35,
+tyre = flx.Tyre(initial_x=2.1, initial_y=0.31,road=road, free_radius=0.35,
                      x_speed=1)
 q_car = flx.SprungMass(tyre_inst=tyre,mass = 500, speed_x=1,speed_y=1, spring_neutral_length=1)
 main_fig = plt.figure()
