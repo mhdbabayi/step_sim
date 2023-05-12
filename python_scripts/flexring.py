@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 import physics_engine as phsx
 '''
 sign convention: 
@@ -438,5 +439,10 @@ class SprungMass(phsx.RigidBody):
     def update_forces(self):
         spring_force = (self.spring_neutral_length - 
         (self.states['y'] - self.tyre_inst.states['y']))
-        damper_force = (self.tyre_inst.y_dot  - self.states['y_dot']) * self.damping_coefficient
+        damper_force = (self.tyre_inst.states['y_dot']  - self.states['y_dot']) * self.damping_coefficient
         self.forces['y'] = spring_force + damper_force            
+    def draw(self):
+        width = self.tyre_inst.free_radius * 2
+        rect = patches.Rectangle((self.states['x']-width/2, self.states['y']-width/2),
+                                 width=width, height=width/2)
+        plt.gca().add_patch(rect)

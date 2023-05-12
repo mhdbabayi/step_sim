@@ -40,16 +40,17 @@ class RigidBody(DynamicObject):
         '''
         self.constraint = constraint_type
     def update_states(self):
+        self.update_accelerations()
         self.states['x_dot']  = self.states['x_dot'] + self.states['x_dot_dot'] * self.simParameters['time_step']
         self.states['x']  = self.states['x'] + self.states['x_dot'] * self.simParameters['time_step']
 
         self.states['y_dot']  = self.states['y_dot'] + self.states['y_dot_dot'] * self.simParameters['time_step']
         self.states['y']  = self.states['y'] + self.states['y_dot'] * self.simParameters['time_step']
     def update_accelerations(self):
-        if ~(int(self.constraint) & ConstraintType.X):
+        if not(int(self.constraint) & ConstraintType.X.value):
             self.states['x_dot_dot'] = self.forces['x'] / self.mass
-        if ~(int(self.constraint) & ConstraintType.Y):
-            self.states['y_dot_dot'] = self.forces['y']
+        if not(int(self.constraint) & ConstraintType.Y.value):
+            self.states['y_dot_dot'] = self.forces['y']/self.mass
     def update_forces(self):
         raise NotImplementedError
     def iterate(self):
