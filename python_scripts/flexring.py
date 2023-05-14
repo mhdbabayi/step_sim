@@ -141,13 +141,13 @@ class Tyre(phsx.RigidBody):
         self.road = road
         self.free_radius = free_radius
         self.delta_theta = np.deg2rad(node_res_deg)
-        self.node_zero = Tyre.node(self,theta =0)
+        self.node_zero = Tyre.Node(self,theta =0)
         theta = 0
         # generate the nodes, with node zero at the top
         last_generated_node = self.node_zero
         while (theta<2*np.pi):
             theta = theta + np.deg2rad(node_res_deg)
-            last_generated_node.next = Tyre.node(tyre=self, theta=theta, previous_node=last_generated_node)
+            last_generated_node.next = Tyre.Node(tyre=self, theta=theta, previous_node=last_generated_node)
             last_generated_node = last_generated_node.next
         self.node_zero.prev =last_generated_node
         last_generated_node.next = self.node_zero
@@ -204,11 +204,16 @@ class Tyre(phsx.RigidBody):
                                                              DY = current.road_dy, DDY= current.road_ddy)
             current = current.next
     def update_contacts(self):
-        current_node = self.node_zero.next
-        self.contacts = []
-        while current_node is not self.node_zero:
+        self.contacts = [c for c in self.contacts if c.update()]
+        if len(self.contacts)==0:
+            current_node = self.node_zero.next
+            end_node = self.node_zero
+        else:
+            current_node = self.contacts[-1].fore_penetration_node.next
+            end_node = self.contacts[0].aft_penetration_node
+        while current_node is not end_node:
             if current_node.penetration_point is not None:
-                self.contacts.append(Tyre.contact(tyre=self,
+                self.contacts.append(Tyre.Contact(tyre=self,
                                                   start_node=current_node))
                 current_node = self.contacts[-1].fore_penetration_node
             current_node = current_node.next
@@ -295,7 +300,7 @@ class Tyre(phsx.RigidBody):
             current_node.y = self.states.position.y + np.sin(current_node.theta + np.pi/2)*self.free_radius
     def update_states(self, external_forces=0):
         super().update_states(external_forces)
-        self.contacts = []
+        #self.contacts = []
         self.update_node_positions()
         self.update_penetrations()
         self.update_contacts()
@@ -306,14 +311,14 @@ class Tyre(phsx.RigidBody):
             self.forces = self.forces + c.get_forces()
         
     # subcalsses
-    class contact:
+    class Contact:
         def __init__(self,tyre, start_node) -> None:
             self.tyre:Tyre = tyre
-            self.aft_penetration_node:Tyre.node = start_node
-            self.fore_penetration_node:Tyre.node = None
-            self.centre_node:Tyre.node = None
-            self.fore_separation_node:Tyre.node = None
-            self.aft_separation_node: Tyre.node = None
+            self.aft_penetration_node:Tyre.Node = start_node
+            self.fore_penetration_node:Tyre.Node = None
+            self.centre_node:Tyre.Node = None
+            self.fore_separation_node:Tyre.Node = None
+            self.aft_separation_node: Tyre.Node = None
             self.set_penetration_limits()
             self.set_boundary_conditions()
         def set_penetration_limits(self):
@@ -328,7 +333,6 @@ class Tyre(phsx.RigidBody):
                     self.centre_node = self.fore_penetration_node
                 self.fore_penetration_node = self.fore_penetration_node.next
         def set_boundary_conditions(self):
-            
             self.fore_separation_node = self.centre_node
             while not self.fore_separation_node.seperation_condition(direction=1) and\
                     self.fore_separation_node.next is not self.fore_penetration_node:
@@ -376,11 +380,29 @@ class Tyre(phsx.RigidBody):
             total_force = self.centre_node.road_dr * self.tyre.stiffness
             angle = self.centre_node.theta + np.pi/2
             return Vector2(total_force* np.cos(angle), total_force * np.sin(angle))
-    class node:
+        def update(self):
+            # check if the contact is extended in the aft direction
+            while self.aft_penetration_node.prev.penetration_point is not None:
+                self.aft_penetration_node = self.aft_penetration_node.prev
+            #check if contact aft point has moved forward
+            # if we get to the fore point and no penetration is detected, retrun None and delete the contact
+            while self.aft_penetration_node.penetration_point is None:
+                self.aft_penetration_node = self.aft_penetration_node.next
+                if self.aft_penetration_node is self.fore_penetration_node.next:
+                    return False
+            # do the same for fore node
+            while self.fore_penetration_node.next.penetration_point is not None:
+                self.fore_penetration_node = self.fore_penetration_node.next
+            while self.fore_penetration_node.penetration_point is None:
+                self.fore_penetration_node = self.fore_penetration_node.prev    
+            self.set_boundary_conditions()
+            self.set_deformation_fit()
+
+    class Node:
         def __init__(self,tyre, theta, next_node=None, previous_node =None):
             self.tyre:Tyre = tyre
-            self.next:Tyre.node = next_node
-            self.prev: Tyre.node = previous_node
+            self.next:Tyre.Node = next_node
+            self.prev: Tyre.Node = previous_node
             self.theta = theta
             self.deformation = 0
             self.deformation_fit = 0
