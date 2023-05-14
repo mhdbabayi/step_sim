@@ -15,7 +15,7 @@ class ConstraintType(Enum):
 class DynamicObject:
     simParameters = {
     "universal_time" : 0,
-    "time_step" : 0.01}
+    "time_step" : 0.001}
     def initialize(self):
         pass
     def iterate(self):

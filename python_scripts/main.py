@@ -6,15 +6,15 @@ from matplotlib import pyplot as plt
 os.system("clear")
 
 # defining sim objects, all moving objects inherit from rigid body
-forward_speed = 3.
+forward_speed = 10
 
 road = flx.Road(
-                step_width=0.1,
-                step_height=0.2,
+                step_width=0.02,
+                step_height=0.05,
                 step_profile_phase=np.pi
                 )
-tyre = flx.Tyre(initial_x=2.1,
-                initial_y=0.31,
+tyre = flx.Tyre(initial_x=1.7,
+                initial_y=0.33,
                 road=road,
                 free_radius=0.35,
                 x_speed=forward_speed
