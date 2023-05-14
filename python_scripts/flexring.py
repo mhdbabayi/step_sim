@@ -8,7 +8,7 @@ sign convention:
 Tyre node zero is at the top and the nodes go counter-clockwise
 Deflection of a node is positive towards the outside of the tyre(increase in radius)
 '''
-dt = 0.01
+#dt = 0.01
 
 def intersection(p1, p2, P1, P2):
     x0, y0 = p1
@@ -124,6 +124,7 @@ class Road:
         self.y = np.hstack((y1, y_step , y2))
         self.dydx = np.zeros(len(self.x))
         self.ddydx = np.zeros(len(self.x))
+        self.points = [Vector2(x , y) for x,y in zip(self.x , self.y)]
         for i in np.arange(start=1,stop=(len(self.x))-1):
             self.dydx[i] = (self.y[i+1] - self.y[i-1])/(self.x[i+1] - self.x[i-1])
             self.ddydx[i] = (self.y[i+1] + self.y[i-1] - 2*self.y[i])/\
@@ -157,14 +158,16 @@ class Tyre(phsx.RigidBody):
         while current_node is not self.node_zero:
             current_node.penetration_point=None
             for i  in range(len(self.road.x[0:-1])):
-                t =intersection((self.states.position.x, self.states.position.y),
-                                (current_node.x, current_node.y),
-                                (self.road.x[i], self.road.y[i]),
-                                (self.road.x[i+1], self.road.y[i+1]))
+                t =intersection(p1=self.states.position,
+                                p2=current_node.position,
+                                P1 =self.road.points[i],
+                                P2=self.road.points[i+1])
                 if t is not None:
-                    current_node.penetration_point = Vector2(
-                        self.road.x[i] + t*(self.road.x[i+1] - self.road.x[i]),
-                        self.road.y[i] + t*(self.road.y[i+1] - self.road.y[i]))
+                    # current_node.penetration_point = Vector2(
+                    #     self.road.x[i] + t*(self.road.x[i+1] - self.road.x[i]),
+                    #     self.road.y[i] + t*(self.road.y[i+1] - self.road.y[i]))
+                    current_node.penetration_point =\
+                        self.road.points[i] + t * (self.road.points[i+1] - self.road.points[i]) 
                     current_node.road_dr = np.linalg.norm(
                         self.states.position - current_node.penetration_point
                         ) - self.free_radius
@@ -294,9 +297,15 @@ class Tyre(phsx.RigidBody):
         current_node = self.node_zero
         current_node.x = self.states.position.x + np.cos(current_node.theta + np.pi/2)*self.free_radius
         current_node.y = self.states.position.y + np.sin(current_node.theta + np.pi/2)*self.free_radius
+        current_node.position = self.states.position + self.free_radius*Vector2(
+            np.cos(current_node.theta + np.pi/2), np.sin(current_node.theta + np.pi/2)
+        )
         while (current_node := current_node.next) is not self.node_zero:
             current_node.x = self.states.position.x + np.cos(current_node.theta + np.pi/2)*self.free_radius
             current_node.y = self.states.position.y + np.sin(current_node.theta + np.pi/2)*self.free_radius
+            current_node.position = self.states.position + self.free_radius*Vector2(
+            np.cos(current_node.theta + np.pi/2), np.sin(current_node.theta + np.pi/2)
+            )
     def update_states(self, external_forces=0):
         super().update_states(external_forces)
         self.update_node_positions()
@@ -411,8 +420,9 @@ class Tyre(phsx.RigidBody):
             self.theta = theta
             self.deformation = 0
             self.deformation_fit = 0
-            self.x = self.tyre.states.position.x + np.cos(self.theta + np.pi/2)*self.tyre.free_radius
-            self.y = self.tyre.states.position.y + np.sin(self.theta + np.pi/2)*self.tyre.free_radius
+            self.position = self.tyre.states.position +\
+                self.tyre.free_radius*Vector2(
+                np.cos(self.theta + np.pi/2), np.sin(self.theta + np.pi/2))
             self.penetration_point = None
             self.road_dr = None # amount of penetration
             self.road_dy = None
