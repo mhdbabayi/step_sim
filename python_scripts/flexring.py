@@ -162,12 +162,11 @@ class Tyre(phsx.RigidBody):
                                 (self.road.x[i], self.road.y[i]),
                                 (self.road.x[i+1], self.road.y[i+1]))
                 if t is not None:
-                    current_node.penetration_point = np.array(
-                        (self.road.x[i] + t*(self.road.x[i+1] - self.road.x[i]),
-                        self.road.y[i] + t*(self.road.y[i+1] - self.road.y[i])))
+                    current_node.penetration_point = Vector2(
+                        self.road.x[i] + t*(self.road.x[i+1] - self.road.x[i]),
+                        self.road.y[i] + t*(self.road.y[i+1] - self.road.y[i]))
                     current_node.road_dr = np.linalg.norm(
-                        [self.states.position.x , self.states.position.y] - 
-                        current_node.penetration_point
+                        self.states.position - current_node.penetration_point
                         ) - self.free_radius
                     current_node.road_dy = self.road.dydx[i] + t*(self.road.dydx[i+1] - self.road.dydx[i])
                     current_node.road_ddy = self.road.ddydx[i] + t*(self.road.ddydx[i+1] - self.road.ddydx[i])
@@ -300,7 +299,6 @@ class Tyre(phsx.RigidBody):
             current_node.y = self.states.position.y + np.sin(current_node.theta + np.pi/2)*self.free_radius
     def update_states(self, external_forces=0):
         super().update_states(external_forces)
-        #self.contacts = []
         self.update_node_positions()
         self.update_penetrations()
         self.update_contacts()
@@ -345,7 +343,7 @@ class Tyre(phsx.RigidBody):
         def draw(self):
             plt.plot(self.centre_node.penetration_point[0],
                      self.centre_node.penetration_point[1],
-                     marker='o')
+                     marker='o', color= "magenta", markersize = 15)
             plt.plot(self.fore_separation_node.penetration_point[0],
                      self.fore_separation_node.penetration_point[1],
                      marker='*', color = 'black', markersize=10)
@@ -395,8 +393,15 @@ class Tyre(phsx.RigidBody):
                 self.fore_penetration_node = self.fore_penetration_node.next
             while self.fore_penetration_node.penetration_point is None:
                 self.fore_penetration_node = self.fore_penetration_node.prev    
-            self.set_boundary_conditions()
+            current_node = self.centre_node
+            while current_node is not self.fore_penetration_node:
+                if np.linalg.norm(current_node.next.penetration_point - 
+                                  self.tyre.states.position) < np.linalg.norm(self.centre_node.penetration_point - 
+                                  self.tyre.states.position):
+                    self.centre_node = current_node
+                current_node = current_node.next
             self.set_deformation_fit()
+            return True
 
     class Node:
         def __init__(self,tyre, theta, next_node=None, previous_node =None):

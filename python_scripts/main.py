@@ -9,8 +9,8 @@ os.system("clear")
 forward_speed = 10
 
 road = flx.Road(
-                step_width=0.02,
-                step_height=0.05,
+                step_width=0.1,
+                step_height=0.2,
                 step_profile_phase=np.pi
                 )
 tyre = flx.Tyre(initial_x=1.7,
