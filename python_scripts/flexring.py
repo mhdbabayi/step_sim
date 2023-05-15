@@ -131,14 +131,14 @@ class Road:
                                ((self.x[i+1]-self.x[i])*(self.x[i] - self.x[i-1])) 
 
 class Tyre(phsx.RigidBody):
-    beta = 3
+    beta = 5
     def __init__(self, initial_x, initial_y,road:Road,
                  free_radius = 1., node_res_deg = 1.,
                  x_speed = 0, y_speed = 0) -> None:
         super().__init__(mass = 50, initial_x=initial_x, initial_y = initial_y,
                        initial_x_dot = x_speed, initial_y_dot = y_speed,constraint_type='101'
                        )
-        self.stiffness = 100000.
+        self.stiffness = 500000.
         self.road = road
         self.free_radius = free_radius
         self.delta_theta = np.deg2rad(node_res_deg)
@@ -409,8 +409,47 @@ class Tyre(phsx.RigidBody):
                                   self.tyre.states.position):
                     self.centre_node = current_node
                 current_node = current_node.next
-            self.set_deformation_fit()
+            self.set_boundary_conditions()
+            self.update_deformation()
             return True
+        def update_deformation(self):
+             #fore
+            current_node = self.fore_separation_node
+            delta_theta = 0
+            # boundary conditions 
+            bc_1 = current_node.road_dr
+            bc_2 = current_node.road_dr_dtheta
+            while np.exp(-self.tyre.beta*delta_theta) > 0.01 and current_node is not self.tyre.node_zero:
+                current_node.deformation = beam_solution(
+                                                         beta=self.tyre.beta,
+                                                         theta=delta_theta,
+                                                         boundary_deformation=bc_1,
+                                                         boundary_derivative=bc_2
+                                                        )
+                current_node = current_node.next
+                delta_theta = delta_theta + self.tyre.delta_theta
+            #aft
+            current_node = self.aft_separation_node
+            delta_theta = 0
+            # boundary conditions 
+            bc_1 = current_node.road_dr
+            bc_2 = -current_node.road_dr_dtheta
+            while np.exp(-self.tyre.beta*delta_theta) > 0.01 and current_node is not self.tyre.node_zero:
+                current_node.deformation = beam_solution(
+                                                         beta=self.tyre.beta,
+                                                         theta=delta_theta,
+                                                         boundary_deformation=bc_1,
+                                                         boundary_derivative=bc_2
+                                                        )
+                current_node = current_node.prev
+                delta_theta = delta_theta + self.tyre.delta_theta
+                current_node = self.aft_separation_node
+                #contact patch
+                while current_node is not self.fore_separation_node.next:
+                    current_node.deformation = current_node.road_dr
+                    #current_node.deformation = 0
+                    current_node = current_node.next 
+
 
     class Node:
         def __init__(self,tyre, theta, next_node=None, previous_node =None):

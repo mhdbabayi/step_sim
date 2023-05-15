@@ -13,7 +13,7 @@ road = flx.Road(
                 step_height=0.2,
                 step_profile_phase=np.pi
                 )
-tyre = flx.Tyre(initial_x=1.7,
+tyre = flx.Tyre(initial_x=2.2,
                 initial_y=0.33,
                 road=road,
                 free_radius=0.35,
