@@ -41,6 +41,7 @@ for i in range(150):
     print(f'{1000*(time.time() - st):.1f} ms/t {q_car.states.velocity.y:0.3f}')
 
     # draw results
+    plt.cla()
     tyre.draw()
     q_car.draw()
     plt.plot(road.x, road.y,'.-')
@@ -57,4 +58,4 @@ for i in range(150):
               q_car.states.position.y + tyre.free_radius*1.1))
     while not plt.waitforbuttonpress():
         pass
-    plt.cla()
+    #plt.pause(interval=0.5)

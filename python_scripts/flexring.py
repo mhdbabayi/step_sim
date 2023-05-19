@@ -131,14 +131,14 @@ class Road:
                                ((self.x[i+1]-self.x[i])*(self.x[i] - self.x[i-1])) 
 
 class Tyre(phsx.RigidBody):
-    beta = 5
+    beta = 3
+    stiffness = 700000.
     def __init__(self, initial_x, initial_y,road:Road,
                  free_radius = 1., node_res_deg = 1.,
                  x_speed = 0, y_speed = 0) -> None:
         super().__init__(mass = 50, initial_x=initial_x, initial_y = initial_y,
                        initial_x_dot = x_speed, initial_y_dot = y_speed,constraint_type='101'
                        )
-        self.stiffness = 500000.
         self.road = road
         self.free_radius = free_radius
         self.delta_theta = np.deg2rad(node_res_deg)
@@ -400,15 +400,14 @@ class Tyre(phsx.RigidBody):
             # do the same for fore node
             while self.fore_penetration_node.next.penetration_point is not None:
                 self.fore_penetration_node = self.fore_penetration_node.next
+
             while self.fore_penetration_node.penetration_point is None:
                 self.fore_penetration_node = self.fore_penetration_node.prev    
             current_node = self.centre_node
-            while current_node is not self.fore_penetration_node:
-                if np.linalg.norm(current_node.next.penetration_point - 
-                                  self.tyre.states.position) < np.linalg.norm(self.centre_node.penetration_point - 
-                                  self.tyre.states.position):
+            while current_node is not self.aft_penetration_node:
+                if current_node.road_dr < self.centre_node.road_dr:
                     self.centre_node = current_node
-                current_node = current_node.next
+                current_node = current_node.prev
             self.set_boundary_conditions()
             self.update_deformation()
             return True
