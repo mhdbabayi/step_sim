@@ -131,13 +131,13 @@ class Road:
 
 class Tyre(phsx.RigidBody):
     beta = 3
+    stiffness = 100000.
     def __init__(self, initial_x, initial_y,road:Road,
                  free_radius = 1., node_res_deg = 1.,
                  x_speed = 0, y_speed = 0) -> None:
         super().__init__(mass = 50, initial_x=initial_x, initial_y = initial_y,
                        initial_x_dot = x_speed, initial_y_dot = y_speed,constraint_type='101'
                        )
-        self.stiffness = 100000.
         self.road = road
         self.free_radius = free_radius
         self.delta_theta = np.deg2rad(node_res_deg)

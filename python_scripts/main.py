@@ -3,18 +3,19 @@ import time
 import os
 import numpy as np
 from matplotlib import pyplot as plt
+from euclid3 import Vector2
 os.system("clear")
 
 # defining sim objects, all moving objects inherit from rigid body
 forward_speed = 3.
-
+initial_position = Vector2(2.2, 0.33)
 road = flx.Road(
                 step_width=0.1,
                 step_height=0.2,
                 step_profile_phase=np.pi
                 )
-tyre = flx.Tyre(initial_x=2.1,
-                initial_y=0.31,
+tyre = flx.Tyre(initial_x=initial_position.x,
+                initial_y=initial_position.y,
                 road=road,
                 free_radius=0.35,
                 x_speed=forward_speed
