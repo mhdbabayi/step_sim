@@ -8,15 +8,13 @@ os.system("clear")
 # defining sim objects, all moving objects inherit from rigid body
 forward_speed = 2.7
 
-
 road = flx.Road(
                 step_width=0.01,
                 step_height=0.08,
                 step_profile_phase=np.pi
                 )
-tyre = flx.Tyre_Continous(initial_x=2.1
-,
-                initial_y=0.33,
+tyre = flx.Tyre_Continous(initial_x=2.1,
+                initial_y=0.30,
                 road=road,
                 free_radius=0.35,
                 x_speed=forward_speed,

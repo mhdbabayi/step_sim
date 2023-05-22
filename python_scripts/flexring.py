@@ -150,12 +150,19 @@ def interpolate_boundary_condition(centre:Vector2,
     # condition is true when lhs > rhs
     # we calculate lhs and rhs at point1 and point2 and linearly interpolate
     # to find the point where they cross
+    """
+    print(f'''r1: {dr_1}
+    r2: {dr_2}\ndr1:{dr_dtheta_1}
+    dr2: {dr_dtheta_1}
+    ddr1: {ddr_dtheta_1}
+    ddr2: {ddr_dtheta_2}''')
+    """
     lhs_1 = 0.5*ddr_dtheta_1
     lhs_2 = 0.5*ddr_dtheta_2
     rhs_1 = -2*(beta**2)*(direction*dr_dtheta_1/beta + dr_1)
     rhs_2 = -2*(beta**2)*(direction*dr_dtheta_2/beta + dr_2)
     t = (rhs_1 - lhs_1)/((lhs_2-lhs_1)-(rhs_2 - rhs_1))# where rhs == lhs
-    return point1 + t*(point2 - point1)
+    return point1 + t*(point2 - point1), t
 
 class Road:
     def __init__(self, step_width, step_height,step_profile_phase = np.pi, length = 5) -> None:
@@ -179,7 +186,7 @@ class Road:
                                ((self.x[i+1]-self.x[i])*(self.x[i] - self.x[i-1])) 
 
 class Tyre(phsx.RigidBody):
-    beta = 5
+    beta = 3
     def __init__(self, initial_x, initial_y,road:Road,
                  free_radius = 1., node_res_deg = 1.,
                  x_speed = 0, y_speed = 0) -> None:
@@ -477,7 +484,7 @@ class Tyre(phsx.RigidBody):
                     -2*(Tyre.beta**2)*(direction*self.road_dr_dtheta/Tyre.beta + self.road_dr)
 
 class Tyre_Continous(phsx.RigidBody):
-    beta = 3
+    beta = 8
     stiffness = 100000.
     def __init__(self, initial_x, initial_y,road:Road,
                  free_radius = 1., node_res_deg = 1.,
@@ -576,10 +583,9 @@ class Tyre_Continous(phsx.RigidBody):
         def draw(self):
             plt.plot(self.centre_point.x , self.centre_point.y , "o")
             plt.plot(self.aft_separation.x, self.aft_separation.y,
-             "x", color="magenta", markersize=6)
+             "x", color="magenta", markersize=15)
             plt.plot(self.fore_separation.x, self.fore_separation.y,
-            "^", color="orange", markersize= 6)
-
+            "|", color="magenta", markersize= 15)
         def is_boundary_condition(self, idx, direction):
             road_dr_dtheta = polar_derivative(
                                             point = self.tyre.road.points[idx] - self.tyre.states.position,
@@ -600,10 +606,10 @@ class Tyre_Continous(phsx.RigidBody):
                 idx = idx+1
             self.fore_separation = self.tyre.road.points[idx]
             if idx == self.collision.end_road_idx:
-                    self.fore_separation = interpolate_boundary_condition(centre=self.tyre.states.position,
+                    self.fore_separation, _ = interpolate_boundary_condition(centre=self.tyre.states.position,
                                                                           radius=self.tyre.free_radius,
                                                                           point1=self.centre_point,
-                                                                          point2=self.tyre.road.points[idx+1],
+                                                                          point2=self.collision.end,
                                                                           dydx=self.tyre.road.dydx[idx],
                                                                           ddydx=self.tyre.road.ddydx[idx],
                                                                           beta=self.tyre.beta,
@@ -614,7 +620,14 @@ class Tyre_Continous(phsx.RigidBody):
                 idx = idx-1
             self.aft_separation = self.tyre.road.points[idx]
             if idx == self.collision.start_road_idx:
-                self.aft_separation = self.collision.start
+                self.aft_separation, _ = interpolate_boundary_condition(centre=self.tyre.states.position,
+                                                                        radius=self.tyre.free_radius,
+                                                                        point1=self.centre_point,
+                                                                        point2=self.collision.start,
+                                                                        dydx=self.tyre.road.dydx[idx],
+                                                                        ddydx=self.tyre.road.ddydx[idx],
+                                                                        beta=self.tyre.beta,
+                                                                        direction=-1)
         def get_forces_centre_point(self):
             total_force = (self.tyre.free_radius -\
                 (self.centre_point - self.tyre.states.position).magnitude()) * self.tyre.stiffness
