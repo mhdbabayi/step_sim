@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import physics_engine as phsx
 from euclid3 import Vector2
+from dataclasses import dataclass
 '''
 sign convention: 
 Tyre node zero is at the top and the nodes go counter-clockwise
@@ -39,32 +40,55 @@ def intersection(p1, p2, P1, P2):
 
     # no intersection found
     return None
-def polar_derivative(X , Y , DY):
+def circle_line_intersection(line_start:Vector2, line_end:Vector2, circle_centre:Vector2, radius:float):
+    #v_ denotes a vector starting at line start
+    v_line = line_end - line_start
+    v_centre = line_start - circle_centre
+    # quadratic equation constants:
+    A = v_line.dot(v_line)
+    B = 2*v_centre.dot(v_line)
+    C = v_centre.dot(v_centre) - radius**2
+    Result = [None, None]
+    if (discriminant := B**2 - 4*A*C) <= 0:
+        return None
+    discriminant = np.sqrt(discriminant)
+    t1 = (-B - discriminant)/(2*A)
+    t2 = (-B + discriminant)/(2*A)
+    if (t1<0) or (t1 > 1):
+        if(t2<0) or (t2 > 1):
+            return None
+    if (t1 > 0 and t1 < 1):
+        Result[0] = line_start + t1*v_line
+    if(t2 > 0 and t2 < 1):
+        Result[1] = line_start + t2*v_line
+    return Result
+def find_chord_centre(p1:Vector2, p2:Vector2, circle_centre:Vector2):
+    #given two points p1 and p2, find the closest point on line segment p1-p2 to circle_centre
+    # points p1 and p2 are assumed inside the circle, no checks are carried out. BE CAREFUL!
+    v_line = p2 - p1
+    v_centre = p1 - circle_centre
+    t = -(v_line.dot(v_centre))/(v_line.magnitude_squared())
+    t = min(max(t , 0),1)
+    return p1 + t*v_line, t
+def polar_derivative(point:Vector2, dy):
     #given point x,y and the deriavtive in cartesian coordiantes dy
     #calculates dr/d(theta) in polar coordinates
-    x = np.asarray(X)
-    y = np.asarray(Y)
-    dy = np.asarray(DY)
+    x = point.x
+    y = point.y
     r = np.sqrt(x**2 + y**2)
     dr = r*(x + y*dy)/(x*dy - y)
-    if np.isscalar(X):
-        return dr.item()
     return dr
-def polar_second_derivative(X , Y, DY , DDY):
-    x = np.asarray(X)
-    y = np.asarray(Y)
-    dy = np.asarray(DY)
-    ddy = np.asarray(DDY)
+def polar_second_derivative(point:Vector2, dy , ddy):
+    x = point.x
+    y = point.y
     r = np.sqrt(x**2 + y**2)
-    dr_dtheta = polar_derivative(x , y , dy)
+    dr_dtheta = polar_derivative(point, dy)
     dx_dtheta = dr_dtheta*x/r  - y
     dy_dtheta = dr_dtheta*y/r + x
     dydx_dtheta = ddy*dx_dtheta
     ddr_dtheta = ((x*dy - y)*(dx_dtheta + y*dydx_dtheta + dy*dy_dtheta) -\
                   (y*dy + x)*(dy*dx_dtheta + dydx_dtheta*x - dy_dtheta)) * r/(x*dy - y)**2\
                    +dr_dtheta*(y*dy  +x)/(x*dy - y)
-    if np.isscalar(X):
-        return ddr_dtheta.item()
     return ddr_dtheta
 def fit_poly(P1, P2, P3):
     x1, y1, dy1 = (P1[0], P1[1], P1[2])
@@ -103,12 +127,36 @@ def construct_piecewise_poly(start, end, peak):
             return a2*x**2 + b2*x + c2
 
     return piecewise_polynomial
-
 def beam_solution(beta,theta,boundary_deformation, boundary_derivative):
     return np.exp(-beta*theta)*\
             (boundary_deformation*np.cos(beta*theta) +
             (boundary_derivative/beta + boundary_deformation)*np.sin(beta*theta))
-    
+def interpolate_boundary_condition(centre:Vector2,
+                                   radius:float,
+                                   point1:Vector2,
+                                   point2:Vector2,
+                                   dydx:float,
+                                   ddydx:float,
+                                   beta:float,
+                                   direction:int):
+    # given a chord or a semi chord on a circle, finds the 
+    # point along the chord where separation happens
+    dr_1 = (point1 - centre).magnitude() - radius
+    dr_2 = (point2 - centre).magnitude() - radius
+    dr_dtheta_1 = polar_derivative(point= point1 - centre,dy=dydx)
+    dr_dtheta_2 = polar_derivative(point= point2- centre,dy= dydx)
+    ddr_dtheta_1 = polar_second_derivative(point1 - centre,dydx,ddydx)
+    ddr_dtheta_2 = polar_second_derivative(point2 - centre, dydx,ddydx)                                           
+    # condition is true when lhs > rhs
+    # we calculate lhs and rhs at point1 and point2 and linearly interpolate
+    # to find the point where they cross
+    lhs_1 = 0.5*ddr_dtheta_1
+    lhs_2 = 0.5*ddr_dtheta_2
+    rhs_1 = -2*(beta**2)*(direction*dr_dtheta_1/beta + dr_1)
+    rhs_2 = -2*(beta**2)*(direction*dr_dtheta_2/beta + dr_2)
+    t = (rhs_1 - lhs_1)/((lhs_2-lhs_1)-(rhs_2 - rhs_1))# where rhs == lhs
+    return point1 + t*(point2 - point1)
+
 class Road:
     def __init__(self, step_width, step_height,step_profile_phase = np.pi, length = 5) -> None:
         self.length = length
@@ -122,6 +170,7 @@ class Road:
         y2 = np.array([y_step[-1], y_step[-1]])
         self.x = np.hstack((x1 , x_step , x2))
         self.y = np.hstack((y1, y_step , y2))
+        self.points = [Vector2(x , y) for x, y in zip(self.x , self.y)]
         self.dydx = np.zeros(len(self.x))
         self.ddydx = np.zeros(len(self.x))
         for i in np.arange(start=1,stop=(len(self.x))-1):
@@ -130,7 +179,7 @@ class Road:
                                ((self.x[i+1]-self.x[i])*(self.x[i] - self.x[i-1])) 
 
 class Tyre(phsx.RigidBody):
-    beta = 3
+    beta = 5
     def __init__(self, initial_x, initial_y,road:Road,
                  free_radius = 1., node_res_deg = 1.,
                  x_speed = 0, y_speed = 0) -> None:
@@ -426,10 +475,153 @@ class Tyre(phsx.RigidBody):
 
             return 0.5*self.road_ddr_dtheta > \
                     -2*(Tyre.beta**2)*(direction*self.road_dr_dtheta/Tyre.beta + self.road_dr)
-                                
+
+class Tyre_Continous(phsx.RigidBody):
+    beta = 3
+    stiffness = 100000.
+    def __init__(self, initial_x, initial_y,road:Road,
+                 free_radius = 1., node_res_deg = 1.,
+                 x_speed = 0, y_speed = 0) -> None:
+        super().__init__(mass = 50, initial_x=initial_x, initial_y = initial_y,
+                       initial_x_dot = x_speed, initial_y_dot = y_speed,constraint_type='101'
+                       )
+        self.road = road
+        self.free_radius = free_radius
+        self.collisions = []
+        self.contacts = []
+    def init_collisions(self):
+        road_idx = 0
+        self.collisions = []
+        while road_idx < len(self.road.points)-1:
+            if (T := circle_line_intersection(self.road.points[road_idx],
+                                              self.road.points[road_idx+1],
+                                              self.states.position,
+                                              self.free_radius)) is not None:
+                self.collisions.append(Tyre_Continous.Collision(start=T[0],
+                                                 end=T[1],
+                                                 start_road_idx = road_idx,
+                                                 end_road_idx = road_idx))
+                # if the line crosses in only 1 point
+                while self.collisions[-1].end is None:
+                    road_idx +=1
+                    if (T := circle_line_intersection(self.road.points[road_idx],
+                                                      self.road.points[road_idx+1],
+                                                      self.states.position,
+                                                      self.free_radius)) is not None:
+                        self.collisions[-1].end = T[1]
+                        self.collisions[-1].end_road_idx = road_idx            
+            road_idx +=1           
+    def init_contacts(self):
+        self.init_collisions()
+        self.contacts = []
+        for c in self.collisions:
+            self.contacts.append(Tyre_Continous.Contact(self, c))
+    def draw(self):
+        circle_obj = plt.Circle(self.states.position, self.free_radius, fill=False)
+        plt.gca().add_patch(circle_obj)
+        for c in self.collisions:
+            plt.plot(c.start.x, c.start.y , "r*")
+            plt.plot(c.end.x, c.end.y, "*", color="black")
+        for c in self.contacts:
+            c.draw()
+    def update_forces(self, external_forces):
+        super().update_forces(external_forces)
+        for c in self.contacts:
+            self.forces = self.forces + c.get_forces_centre_point()
+    def update_states(self, external_forces):
+        super().update_states(external_forces)
+        self.init_contacts()
+        
+    @dataclass
+    class Collision:
+        start:Vector2
+        end:Vector2
+        road_idx:int
+        def __init__(self, start, end, start_road_idx, end_road_idx):
+            self.start = start
+            self.end = end
+            self.start_road_idx = start_road_idx
+            self.end_road_idx = end_road_idx
+    class Contact:
+        def __init__(self,
+                     tyre,
+                     collision):
+            self.tyre = tyre
+            self.collision = collision
+            # case of collision with a flat line
+            if collision.start_road_idx == collision.end_road_idx:
+                self.centre_point = 0.5*(
+                    collision.start + collision.end)
+                self.centre_point_idx = self.collision.start_road_idx
+                self.centre_point_interp_value = 0.5
+            else:
+                idx = collision.start_road_idx
+                min_distance = (self.tyre.road.points[idx]-
+                self.tyre.states.position).magnitude()
+                self.centre_point = collision.start
+                self.centre_point_idx = collision.start_road_idx
+                # find closest point in collision
+                while idx != collision.end_road_idx+1:
+                    idx += 1
+                    if (self.tyre.road.points[idx] - 
+                            self.tyre.states.position).magnitude() < min_distance:
+                        min_distance = (self.tyre.road.points[idx] - 
+                            self.tyre.states.position).magnitude()
+                        self.centre_point_idx = idx
+                    self.centre_point, self.centre_point_interp_value =\
+                        find_chord_centre(self.tyre.road.points[self.centre_point_idx],
+                                          self.tyre.road.points[self.centre_point_idx+1],
+                                          self.tyre.states.position)
+            self.set_boundaries()
+        def draw(self):
+            plt.plot(self.centre_point.x , self.centre_point.y , "o")
+            plt.plot(self.aft_separation.x, self.aft_separation.y,
+             "x", color="magenta", markersize=6)
+            plt.plot(self.fore_separation.x, self.fore_separation.y,
+            "^", color="orange", markersize= 6)
+
+        def is_boundary_condition(self, idx, direction):
+            road_dr_dtheta = polar_derivative(
+                                            point = self.tyre.road.points[idx] - self.tyre.states.position,
+                                            dy = self.tyre.road.dydx[idx]
+                                            )
+            road_ddr_dtheta = polar_second_derivative(
+                                                    point=self.tyre.road.points[idx] - self.tyre.states.position,
+                                                    dy = self.tyre.road.dydx[idx],
+                                                    ddy = self.tyre.road.ddydx[idx]
+                                                    )
+            road_dr = (self.tyre.road.points[idx] - self.tyre.states.position).magnitude()
+            return 0.5*road_ddr_dtheta > \
+                    -2*(self.tyre.beta**2)*(direction*road_dr_dtheta/self.tyre.beta + road_dr)
+        def set_boundaries(self):
+            #fore
+            idx = self.centre_point_idx
+            while (not self.is_boundary_condition(idx, 1)):
+                idx = idx+1
+            self.fore_separation = self.tyre.road.points[idx]
+            if idx == self.collision.end_road_idx:
+                    self.fore_separation = interpolate_boundary_condition(centre=self.tyre.states.position,
+                                                                          radius=self.tyre.free_radius,
+                                                                          point1=self.centre_point,
+                                                                          point2=self.tyre.road.points[idx+1],
+                                                                          dydx=self.tyre.road.dydx[idx],
+                                                                          ddydx=self.tyre.road.ddydx[idx],
+                                                                          beta=self.tyre.beta,
+                                                                          direction=1)
+            # aft
+            idx = self.centre_point_idx
+            while (not self.is_boundary_condition(idx , -1)):
+                idx = idx-1
+            self.aft_separation = self.tyre.road.points[idx]
+            if idx == self.collision.start_road_idx:
+                self.aft_separation = self.collision.start
+        def get_forces_centre_point(self):
+            total_force = (self.tyre.free_radius -\
+                (self.centre_point - self.tyre.states.position).magnitude()) * self.tyre.stiffness
+            return total_force*(self.tyre.states.position - self.centre_point).normalize()
 class SprungMass(phsx.RigidBody):
     def __init__(self,
-                tyre_inst:Tyre,
+                tyre_inst:Tyre_Continous,
                 mass,
                 speed_x=0,
                 speed_y=0,

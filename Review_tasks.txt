@@ -1,0 +1,49 @@
+Deliverabels: 
+    Paper draft
+        Introduction:
+            literature review
+            Why do this anyway
+        Methodolgy: 
+            Theory of the model
+        Results:
+            Pressure distribution results 
+            Normal force results
+            Tangential force results
+            Hysterisis results
+            Comparison with kurb strike data
+            Comparison with literature 
+        Conclusion
+    Presentation:
+        Review of the past
+        Literature review
+        Methodology
+        Results and kurb strike results 
+        Validation plan 
+        3D model plan
+        Timeline
+    Development:
+        Pressure calculation scheme
+        Hysterisis scheme
+        Tangential force scheme
+        Terrain pre processing
+        Contact tracking
+
+Friday:
+
+Saturday: 
+    Implement Contact tracking properly:
+        when finished, the results should be exactly the same as recalculating the contact at every time step, but contact objects will have memory
+    implement pressure distribution 
+        The formula is calculated, just type it in.
+    Process some of the curb strike data and find usefull things
+Sunday:
+    write literature review for draft. 
+    Write down some of the results and make some plots 
+Monday:
+    Start on tangential force and driven wheel
+        Lay down the scheme for longitudinal force and start implementation
+        Discuss extension to lateral force
+    Write Methodology
+Tuesday:
+
+
