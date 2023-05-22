@@ -13,7 +13,7 @@ road = flx.Road(
                 step_height=0.08,
                 step_profile_phase=np.pi
                 )
-tyre = flx.Tyre_Continous(initial_x=2.1,
+tyre = flx.Tyre_Continous(initial_x=2.2,
                 initial_y=0.30,
                 road=road,
                 free_radius=0.35,

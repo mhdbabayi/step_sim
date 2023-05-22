@@ -496,6 +496,10 @@ class Tyre_Continous(phsx.RigidBody):
         self.free_radius = free_radius
         self.collisions = []
         self.contacts = []
+        # nodes are only used for visualisation
+        self.node_angles = np.deg2rad(np.linspace(0 , 360, 361)[0:-1])
+        self.node_r = 0*self.node_angles + self.free_radius
+   
     def init_collisions(self):
         road_idx = 0
         self.collisions = []
@@ -579,13 +583,28 @@ class Tyre_Continous(phsx.RigidBody):
                         find_chord_centre(self.tyre.road.points[self.centre_point_idx],
                                           self.tyre.road.points[self.centre_point_idx+1],
                                           self.tyre.states.position)
+            self.center_point_angle = np.arctan2(self.centre_point.y - self.tyre.states.position.y,
+                                                 self.centre_point.x - self.tyre.states.position.x)
+            self.fore_theta = np.linspace(0 , np.deg2rad(90), 90)
+            self.aft_theta = np.linspace(0 , np.deg2rad(90) , 90) 
+            self.fore_deformation = self.fore_theta * 0
+            self.aft_deformation = self.aft_theta * 0
             self.set_boundaries()
+            self.set_deformation()
         def draw(self):
             plt.plot(self.centre_point.x , self.centre_point.y , "o")
             plt.plot(self.aft_separation.x, self.aft_separation.y,
              "x", color="magenta", markersize=15)
             plt.plot(self.fore_separation.x, self.fore_separation.y,
             "|", color="magenta", markersize= 15)
+            theta = self.fore_theta + np.arctan2(
+                (self.fore_separation.y - self.tyre.states.position.y),
+                (self.fore_separation.x - self.tyre.states.position.x)
+             )
+            plt.plot(np.cos(theta)*(self.fore_deformation + self.tyre.free_radius)+\
+                    self.tyre.states.position.x,
+                     np.sin(theta)*(self.fore_deformation+ self.tyre.free_radius)+\
+                            self.tyre.states.position.y) 
         def is_boundary_condition(self, idx, direction):
             road_dr_dtheta = polar_derivative(
                                             point = self.tyre.road.points[idx] - self.tyre.states.position,
@@ -614,6 +633,8 @@ class Tyre_Continous(phsx.RigidBody):
                                                                           ddydx=self.tyre.road.ddydx[idx],
                                                                           beta=self.tyre.beta,
                                                                           direction=1)
+            self.fore_separation_dr_dtheta = polar_derivative(self.fore_separation - self.tyre.states.position,
+                                                              self.tyre.road.dydx[idx])
             # aft
             idx = self.centre_point_idx
             while (not self.is_boundary_condition(idx , -1)):
@@ -628,10 +649,20 @@ class Tyre_Continous(phsx.RigidBody):
                                                                         ddydx=self.tyre.road.ddydx[idx],
                                                                         beta=self.tyre.beta,
                                                                         direction=-1)
+            self.aft_separation_dr_dtheta = polar_derivative(self.aft_separation,
+                                                              self.tyre.road.dydx[idx])
         def get_forces_centre_point(self):
             total_force = (self.tyre.free_radius -\
                 (self.centre_point - self.tyre.states.position).magnitude()) * self.tyre.stiffness
             return total_force*(self.tyre.states.position - self.centre_point).normalize()
+        def set_deformation(self):
+            #fore
+            bc1 = (self.tyre.states.position - self.fore_separation).magnitude() - self.tyre.free_radius
+            bc2 = self.fore_separation_dr_dtheta
+            self.fore_deformation = beam_solution(self.tyre.beta,
+                                                  self.fore_theta,
+                                                  bc1,bc2)
+
 class SprungMass(phsx.RigidBody):
     def __init__(self,
                 tyre_inst:Tyre_Continous,
