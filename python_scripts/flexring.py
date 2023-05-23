@@ -185,6 +185,27 @@ class Road:
             self.ddydx[i] = (self.y[i+1] + self.y[i-1] - 2*self.y[i])/\
                                ((self.x[i+1]-self.x[i])*(self.x[i] - self.x[i-1])) 
 
+class SmartRaod(Road):
+    def __init__(self, step_width, step_height,step_profile_phase = np.pi, length = 5) -> None:
+        # for now we initialize like before, with only a sine bump in the middle
+        super().__init__(step_width, step_height,step_profile_phase, length)
+    
+    def initialize_nodes(self):
+    class Node():
+        def __init__(self,
+                     parent_road,
+                     position:Vector2,
+                     dydx:float,
+                     ddydx:float,
+                     next=None,
+                     prev=None) -> None:
+            self.parent_road = parent_road
+            self.posistion:Vector2 = position
+            self.dydx = dydx
+            self.ddydx = ddydx
+            self.next:SmartRaod.Node = next
+            self.prev:SmartRaod.Node = prev
+
 class Tyre(phsx.RigidBody):
     beta = 3
     def __init__(self, initial_x, initial_y,road:Road,
@@ -597,6 +618,7 @@ class Tyre_Continous(phsx.RigidBody):
              "x", color="magenta", markersize=15)
             plt.plot(self.fore_separation.x, self.fore_separation.y,
             "|", color="magenta", markersize= 15)
+            #fore
             theta = self.fore_theta + np.arctan2(
                 (self.fore_separation.y - self.tyre.states.position.y),
                 (self.fore_separation.x - self.tyre.states.position.x)
@@ -605,6 +627,17 @@ class Tyre_Continous(phsx.RigidBody):
                     self.tyre.states.position.x,
                      np.sin(theta)*(self.fore_deformation+ self.tyre.free_radius)+\
                             self.tyre.states.position.y) 
+            #aft
+            theta = -self.aft_theta + np.arctan2(
+                (self.aft_separation.y - self.tyre.states.position.y),
+                (self.aft_separation.x - self.tyre.states.position.x)
+             )
+            plt.plot(np.cos(theta)*(self.fore_deformation + self.tyre.free_radius)+\
+                    self.tyre.states.position.x,
+                     np.sin(theta)*(self.fore_deformation+ self.tyre.free_radius)+\
+                            self.tyre.states.position.y) 
+            
+            
         def is_boundary_condition(self, idx, direction):
             road_dr_dtheta = polar_derivative(
                                             point = self.tyre.road.points[idx] - self.tyre.states.position,
