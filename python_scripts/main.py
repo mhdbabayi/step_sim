@@ -11,7 +11,8 @@ forward_speed = 2.7
 road = flx.Road(
                 step_width=0.01,
                 step_height=0.08,
-                step_profile_phase=np.pi
+                step_profile_phase=np.pi,
+                high_res=True
                 )
 tyre = flx.Tyre_Continous(initial_x=2.2,
                 initial_y=0.30,
@@ -42,7 +43,7 @@ for i in range(500):
     # draw results
     tyre.draw()
     q_car.draw()
-    plt.plot(road.x, road.y,'.-')
+    plt.plot(road.x, road.y, color="black")
     plt.gca().set_aspect('equal')
     plt.draw()
     plt.xlim((tyre.states.position.x - tyre.free_radius*1.1,

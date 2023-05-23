@@ -4,6 +4,7 @@ import matplotlib.patches as patches
 import physics_engine as phsx
 from euclid3 import Vector2
 from dataclasses import dataclass
+from scipy import interpolate
 '''
 sign convention: 
 Tyre node zero is at the top and the nodes go counter-clockwise
@@ -165,32 +166,51 @@ def interpolate_boundary_condition(centre:Vector2,
     return point1 + t*(point2 - point1), t
 
 class Road:
-    def __init__(self, step_width, step_height,step_profile_phase = np.pi, length = 5) -> None:
+    def __init__(self, step_width, step_height,step_profile_phase = np.pi, length = 5, high_res=False) -> None:
         self.length = length
-        x1 = np.array([0, length/2- step_width/2])
-        y1 = np.array([0,0])
-        x_step = length/2 + np.linspace(-step_width/2 , step_width/2,
-                                        np.max((20,np.int32(step_width/0.01))))[1:]
-        step_phase = np.linspace(0, step_profile_phase, len(x_step))
-        y_step = step_height/2 - (step_height/2)*np.cos(step_phase)
-        x2 = np.array([x_step[-1] + 0.01, self.length])
-        y2 = np.array([y_step[-1], y_step[-1]])
-        self.x = np.hstack((x1 , x_step , x2))
-        self.y = np.hstack((y1, y_step , y2))
+        self.x , self.y = self.create_profile(step_width, step_height , step_profile_phase, length)
         self.points = [Vector2(x , y) for x, y in zip(self.x , self.y)]
+        self.high_res = high_res
+        if high_res:
+            self.points = self.over_sample(self.points)
+            self.x = [p.x for p in self.points]
+            self.y = [p.y for p in self.points]
         self.dydx = np.zeros(len(self.x))
         self.ddydx = np.zeros(len(self.x))
         for i in np.arange(start=1,stop=(len(self.x))-1):
             self.dydx[i] = (self.y[i+1] - self.y[i-1])/(self.x[i+1] - self.x[i-1])
             self.ddydx[i] = (self.y[i+1] + self.y[i-1] - 2*self.y[i])/\
                                ((self.x[i+1]-self.x[i])*(self.x[i] - self.x[i-1])) 
-
+    @staticmethod
+    def create_profile(step_width, step_height, step_profile_phase, length):
+        x1 = np.array([0, length/2- step_width/2])
+        y1 = np.array([0,0])
+        x_step = length/2 + np.linspace(-step_width/2 , step_width/2,
+                                        np.max((20,np.int32(step_width/0.01))))[1:]
+        step_phase = np.linspace(0, step_profile_phase, len(x_step))
+        y_step = step_height/2 - (step_height/2)*np.cos(step_phase)
+        x2 = np.array([x_step[-1] + 0.01, length])
+        y2 = np.array([y_step[-1], y_step[-1]])
+        return np.hstack((x1 , x_step , x2)), np.hstack((y1, y_step , y2))
+    @staticmethod
+    def over_sample(points, distance_step = 0.001):
+        cum_distance = [(points[idx+1] - points[idx]).magnitude()
+                 for idx in range(len(points)-1)]
+        cum_distance.insert(0 , 0)
+        cum_distance = np.cumsum(cum_distance)
+        x  = [p.x for p in points]
+        y = [p.y for p in points]
+        uniform_distance = np.arange(start=0, stop = cum_distance[-1], step=distance_step)
+        x_interpolator = interpolate.interp1d(x = cum_distance, y = x,kind="linear")
+        y_interpolator = interpolate.interp1d(x = cum_distance, y = y , kind="linear")
+        return [Vector2(x_interpolator(d) , y_interpolator(d)) for d in uniform_distance]
 class SmartRaod(Road):
     def __init__(self, step_width, step_height,step_profile_phase = np.pi, length = 5) -> None:
         # for now we initialize like before, with only a sine bump in the middle
         super().__init__(step_width, step_height,step_profile_phase, length)
+        self.over_sampled_points = self.over_sample(self.points)
         self.node_list = []
-    
+
     def initialize_nodes(self):
         self.node_list = [SmartRaod.Node(parent_road=self,
                                          position=self.points[idx],
@@ -535,7 +555,10 @@ class Tyre_Continous(phsx.RigidBody):
     def init_collisions(self):
         road_idx = 0
         self.collisions = []
-        while road_idx < len(self.road.points)-1:
+        road_idx = 0
+        while self.road.points[road_idx].x < self.states.position.x - self.free_radius:
+            road_idx += 1
+        while self.road.points[road_idx].x < self.states.position.x + self.free_radius:
             if (T := circle_line_intersection(self.road.points[road_idx],
                                               self.road.points[road_idx+1],
                                               self.states.position,
@@ -592,6 +615,8 @@ class Tyre_Continous(phsx.RigidBody):
             self.tyre = tyre
             self.collision = collision
             # case of collision with a flat line
+            '''
+            # This is only needed for low rest roads
             if collision.start_road_idx == collision.end_road_idx:
                 self.centre_point = 0.5*(
                     collision.start + collision.end)
@@ -615,6 +640,20 @@ class Tyre_Continous(phsx.RigidBody):
                         find_chord_centre(self.tyre.road.points[self.centre_point_idx],
                                           self.tyre.road.points[self.centre_point_idx+1],
                                           self.tyre.states.position)
+            '''
+            idx = collision.start_road_idx
+            self.center_point_idx = idx
+            self.centre_point = collision.start
+            min_distance = (self.tyre.road.points[idx] - self.tyre.states.position).magnitude()
+            while idx != collision.end_road_idx + 1:
+                idx +=1
+                if (self.tyre.road.points[idx] - 
+                            self.tyre.states.position).magnitude() < min_distance:
+                        min_distance = (self.tyre.road.points[idx] - 
+                            self.tyre.states.position).magnitude()
+                        self.centre_point_idx = idx
+                        self.centre_point = self.tyre.road.points[idx]
+
             self.center_point_angle = np.arctan2(self.centre_point.y - self.tyre.states.position.y,
                                                  self.centre_point.x - self.tyre.states.position.x)
             self.fore_theta = np.linspace(0 , np.deg2rad(90), 90)
@@ -647,8 +686,6 @@ class Tyre_Continous(phsx.RigidBody):
                     self.tyre.states.position.x,
                      np.sin(theta)*(self.fore_deformation+ self.tyre.free_radius)+\
                             self.tyre.states.position.y) 
-            
-            
         def is_boundary_condition(self, idx, direction):
             road_dr_dtheta = polar_derivative(
                                             point = self.tyre.road.points[idx] - self.tyre.states.position,
@@ -659,7 +696,7 @@ class Tyre_Continous(phsx.RigidBody):
                                                     dy = self.tyre.road.dydx[idx],
                                                     ddy = self.tyre.road.ddydx[idx]
                                                     )
-            road_dr = (self.tyre.road.points[idx] - self.tyre.states.position).magnitude()
+            road_dr = (self.tyre.road.points[idx] - self.tyre.states.position).magnitude() - self.tyre.free_radius
             return 0.5*road_ddr_dtheta > \
                     -2*(self.tyre.beta**2)*(direction*road_dr_dtheta/self.tyre.beta + road_dr)
         def set_boundaries(self):
@@ -668,15 +705,6 @@ class Tyre_Continous(phsx.RigidBody):
             while (not self.is_boundary_condition(idx, 1)):
                 idx = idx+1
             self.fore_separation = self.tyre.road.points[idx]
-            if idx == self.collision.end_road_idx:
-                    self.fore_separation, _ = interpolate_boundary_condition(centre=self.tyre.states.position,
-                                                                          radius=self.tyre.free_radius,
-                                                                          point1=self.centre_point,
-                                                                          point2=self.collision.end,
-                                                                          dydx=self.tyre.road.dydx[idx],
-                                                                          ddydx=self.tyre.road.ddydx[idx],
-                                                                          beta=self.tyre.beta,
-                                                                          direction=1)
             self.fore_separation_dr_dtheta = polar_derivative(self.fore_separation - self.tyre.states.position,
                                                               self.tyre.road.dydx[idx])
             # aft
@@ -684,15 +712,6 @@ class Tyre_Continous(phsx.RigidBody):
             while (not self.is_boundary_condition(idx , -1)):
                 idx = idx-1
             self.aft_separation = self.tyre.road.points[idx]
-            if idx == self.collision.start_road_idx:
-                self.aft_separation, _ = interpolate_boundary_condition(centre=self.tyre.states.position,
-                                                                        radius=self.tyre.free_radius,
-                                                                        point1=self.centre_point,
-                                                                        point2=self.collision.start,
-                                                                        dydx=self.tyre.road.dydx[idx],
-                                                                        ddydx=self.tyre.road.ddydx[idx],
-                                                                        beta=self.tyre.beta,
-                                                                        direction=-1)
             self.aft_separation_dr_dtheta = polar_derivative(self.aft_separation,
                                                               self.tyre.road.dydx[idx])
         def get_forces_centre_point(self):
