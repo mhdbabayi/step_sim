@@ -189,8 +189,19 @@ class SmartRaod(Road):
     def __init__(self, step_width, step_height,step_profile_phase = np.pi, length = 5) -> None:
         # for now we initialize like before, with only a sine bump in the middle
         super().__init__(step_width, step_height,step_profile_phase, length)
+        self.node_list = []
     
     def initialize_nodes(self):
+        self.node_list = [SmartRaod.Node(parent_road=self,
+                                         position=self.points[idx],
+                                         dydx=self.dydx[idx],
+                                         ddydx=self.ddydx[idx]) for idx in range(len(self.points))]
+        self.node_list[0].next = self.node_list[1]
+        self.node_list[-1].prev = self.node_list[-2]
+        for i in range(len(self.node_list)-2):
+            self.node_list[i+1].next = self.node_list[i+2]
+            self.node_list[i+1].prev = self.node_list[i]
+        
     class Node():
         def __init__(self,
                      parent_road,
