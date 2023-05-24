@@ -537,7 +537,7 @@ class Tyre(phsx.RigidBody):
 
 class Tyre_Continous(phsx.RigidBody):
     beta = 8
-    stiffness = 100000.
+    stiffness = 200000.
     def __init__(self, initial_x, initial_y,road:Road,
                  free_radius = 1., node_res_deg = 1.,
                  x_speed = 0, y_speed = 0) -> None:
@@ -608,6 +608,24 @@ class Tyre_Continous(phsx.RigidBody):
             self.end = end
             self.start_road_idx = start_road_idx
             self.end_road_idx = end_road_idx
+        def update(self):
+            fore_iteration_direction = self.get_node_moving_direction(self.end, self.end_road_idx)
+            aft_iteration_direction = self.get_node_moving_direction(self.start , self.start_road_idx)
+            while (T := circle_line_intersection(self.end,
+                                           self.tyre.road.points[self.end_road_idx+1],
+                                           self.tyre.states.posistion,
+                                           self.free_radius)) is not None:
+                self.end_road_idx += fore_iteration_direction
+                self.end = self.tyre.road.points[self.end_road_idx]             
+        def get_node_moving_direction(self, road_idx):
+            is_inside = (self.tyre.road.points[road_idx]
+             - self.tyre.states.posistion).magnitude() < self.tyre.free_radius
+            positive_x_is_outside = (self.tyre.road.points[idx+1] - self.tyre.road.points[idx]).dot(
+                self.tyre.road.points[road_idx] - self.tyre.states.posistion
+            )
+            if (is_inside and positive_x_is_outside) or (not is_inside and not positive_x_is_outside):
+                return 1
+            return -1
     class Contact:
         def __init__(self,
                      tyre,
@@ -682,9 +700,9 @@ class Tyre_Continous(phsx.RigidBody):
                 (self.aft_separation.y - self.tyre.states.position.y),
                 (self.aft_separation.x - self.tyre.states.position.x)
              )
-            plt.plot(np.cos(theta)*(self.fore_deformation + self.tyre.free_radius)+\
+            plt.plot(np.cos(theta)*(self.aft_deformation + self.tyre.free_radius)+\
                     self.tyre.states.position.x,
-                     np.sin(theta)*(self.fore_deformation+ self.tyre.free_radius)+\
+                     np.sin(theta)*(self.aft_deformation+ self.tyre.free_radius)+\
                             self.tyre.states.position.y) 
         def is_boundary_condition(self, idx, direction):
             road_dr_dtheta = polar_derivative(
@@ -712,7 +730,7 @@ class Tyre_Continous(phsx.RigidBody):
             while (not self.is_boundary_condition(idx , -1)):
                 idx = idx-1
             self.aft_separation = self.tyre.road.points[idx]
-            self.aft_separation_dr_dtheta = polar_derivative(self.aft_separation,
+            self.aft_separation_dr_dtheta = polar_derivative(self.aft_separation - self.tyre.states.position,
                                                               self.tyre.road.dydx[idx])
         def get_forces_centre_point(self):
             total_force = (self.tyre.free_radius -\
@@ -725,6 +743,12 @@ class Tyre_Continous(phsx.RigidBody):
             self.fore_deformation = beam_solution(self.tyre.beta,
                                                   self.fore_theta,
                                                   bc1,bc2)
+            bc1 = (self.tyre.states.position - self.aft_separation).magnitude() - self.tyre.free_radius
+            bc2 = -self.aft_separation_dr_dtheta
+            self.aft_deformation = beam_solution(self.tyre.beta,
+                                                  self.aft_theta,
+                                                  bc1,bc2)                                     
+
 
 class SprungMass(phsx.RigidBody):
     def __init__(self,

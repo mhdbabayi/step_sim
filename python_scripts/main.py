@@ -9,13 +9,13 @@ os.system("clear")
 forward_speed = 2.7
 
 road = flx.Road(
-                step_width=0.01,
-                step_height=0.08,
+                step_width=0.5,
+                step_height=0.5,
                 step_profile_phase=np.pi,
                 high_res=True
                 )
-tyre = flx.Tyre_Continous(initial_x=2.2,
-                initial_y=0.30,
+tyre = flx.Tyre_Continous(initial_x=2.1,
+                initial_y=0.34,
                 road=road,
                 free_radius=0.35,
                 x_speed=forward_speed,
