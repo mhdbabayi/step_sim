@@ -5,6 +5,7 @@ import physics_engine as phsx
 from euclid3 import Vector2
 from dataclasses import dataclass
 from scipy import interpolate
+
 '''
 sign convention: 
 Tyre node zero is at the top and the nodes go counter-clockwise
@@ -537,7 +538,7 @@ class Tyre(phsx.RigidBody):
 
 class Tyre_Continous(phsx.RigidBody):
     beta = 8
-    stiffness = 200000.
+    stiffness = 150000.
     def __init__(self, initial_x, initial_y,road:Road,
                  free_radius = 1., node_res_deg = 1.,
                  x_speed = 0, y_speed = 0) -> None:
@@ -551,13 +552,10 @@ class Tyre_Continous(phsx.RigidBody):
         # nodes are only used for visualisation
         self.node_angles = np.deg2rad(np.linspace(0 , 360, 361)[0:-1])
         self.node_r = 0*self.node_angles + self.free_radius
-   
-    def init_collisions(self):
-        road_idx = 0
-        self.collisions = []
-        road_idx = 0
+    def find_new_collisions(self, start_idx=0):
+        road_idx = start_idx
         while self.road.points[road_idx].x < self.states.position.x - self.free_radius:
-            road_idx += 1
+                road_idx += 1
         while self.road.points[road_idx].x < self.states.position.x + self.free_radius:
             if (T := circle_line_intersection(self.road.points[road_idx],
                                               self.road.points[road_idx+1],
@@ -577,11 +575,11 @@ class Tyre_Continous(phsx.RigidBody):
                         self.collisions[-1].end = T[1]
                         self.collisions[-1].end_road_idx = road_idx            
             road_idx +=1           
-    def init_contacts(self):
-        self.init_collisions()
-        self.contacts = []
+    def find_new_contacts(self, start_idx = 0):
+        self.find_new_collisions(start_idx)
         for c in self.collisions:
             self.contacts.append(Tyre_Continous.Contact(self, c))
+            self.collisions.remove(c)
     def draw(self):
         circle_obj = plt.Circle(self.states.position, self.free_radius, fill=False)
         plt.gca().add_patch(circle_obj)
@@ -596,8 +594,11 @@ class Tyre_Continous(phsx.RigidBody):
             self.forces = self.forces + c.get_forces_centre_point()
     def update_states(self, external_forces):
         super().update_states(external_forces)
-        self.init_contacts()
-        
+        #self.init_contacts()
+        self.update_contacts()
+    def update_contacts(self):
+        self.find_new_contacts(start_idx=self.contacts[-1].collision.end_road_idx+5)
+        self.contacts = [c for c in self.contacts if c.update() is not None]    
     @dataclass
     class Collision:
         start:Vector2
@@ -608,24 +609,17 @@ class Tyre_Continous(phsx.RigidBody):
             self.end = end
             self.start_road_idx = start_road_idx
             self.end_road_idx = end_road_idx
-        def update(self):
-            fore_iteration_direction = self.get_node_moving_direction(self.end, self.end_road_idx)
-            aft_iteration_direction = self.get_node_moving_direction(self.start , self.start_road_idx)
-            while (T := circle_line_intersection(self.end,
-                                           self.tyre.road.points[self.end_road_idx+1],
-                                           self.tyre.states.posistion,
-                                           self.free_radius)) is not None:
-                self.end_road_idx += fore_iteration_direction
-                self.end = self.tyre.road.points[self.end_road_idx]             
-        def get_node_moving_direction(self, road_idx):
-            is_inside = (self.tyre.road.points[road_idx]
-             - self.tyre.states.posistion).magnitude() < self.tyre.free_radius
-            positive_x_is_outside = (self.tyre.road.points[idx+1] - self.tyre.road.points[idx]).dot(
-                self.tyre.road.points[road_idx] - self.tyre.states.posistion
-            )
-            if (is_inside and positive_x_is_outside) or (not is_inside and not positive_x_is_outside):
-                return 1
-            return -1
+        def update(self, centre_road_idx, tyre_centre, tyre_radius,road_inst):
+            self.end_road_idx = centre_road_idx
+            self.start_road_idx = centre_road_idx
+            while ((tyre_centre - road_inst.points[self.end_road_idx]).magnitude() < \
+                tyre_radius):
+                self.end_road_idx += 1
+            self.end = road_inst.points[self.end_road_idx]
+            while ((tyre_centre - road_inst.points[self.start_road_idx]).magnitude() < \
+                tyre_radius):
+                self.start_road_idx -= 1
+            self.start = road_inst.points[self.start_road_idx]          
     class Contact:
         def __init__(self,
                      tyre,
@@ -660,7 +654,7 @@ class Tyre_Continous(phsx.RigidBody):
                                           self.tyre.states.position)
             '''
             idx = collision.start_road_idx
-            self.center_point_idx = idx
+            self.centre_point_idx = idx
             self.centre_point = collision.start
             min_distance = (self.tyre.road.points[idx] - self.tyre.states.position).magnitude()
             while idx != collision.end_road_idx + 1:
@@ -672,7 +666,7 @@ class Tyre_Continous(phsx.RigidBody):
                         self.centre_point_idx = idx
                         self.centre_point = self.tyre.road.points[idx]
 
-            self.center_point_angle = np.arctan2(self.centre_point.y - self.tyre.states.position.y,
+            self.centre_point_angle = np.arctan2(self.centre_point.y - self.tyre.states.position.y,
                                                  self.centre_point.x - self.tyre.states.position.x)
             self.fore_theta = np.linspace(0 , np.deg2rad(90), 90)
             self.aft_theta = np.linspace(0 , np.deg2rad(90) , 90) 
@@ -748,7 +742,24 @@ class Tyre_Continous(phsx.RigidBody):
             self.aft_deformation = beam_solution(self.tyre.beta,
                                                   self.aft_theta,
                                                   bc1,bc2)                                     
-
+        def update(self):
+            if (self.centre_point - self.tyre.states.position).magnitude() > self.tyre.free_radius:
+                return None
+            road_tangent_vector = self.tyre.road.points[self.centre_point_idx+1] -\
+                self.tyre.road.points[self.centre_point_idx-1]
+            idx_increment = np.int32(np.sign(
+                    road_tangent_vector.dot(self.tyre.states.velocity)))
+            while ((self.tyre.road.points[self.centre_point_idx] - self.tyre.states.position).magnitude() >\
+                (self.tyre.road.points[self.centre_point_idx+idx_increment] - self.tyre.states.position).magnitude()):
+                self.centre_point_idx += idx_increment
+            self.centre_point = self.tyre.road.points[self.centre_point_idx]
+            self.collision.update(self.centre_point_idx,
+                                  self.tyre.states.position,
+                                  self.tyre.free_radius,
+                                  self.tyre.road)
+            self.set_boundaries()
+            self.set_deformation()
+            return 1
 
 class SprungMass(phsx.RigidBody):
     def __init__(self,
