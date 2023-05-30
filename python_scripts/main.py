@@ -10,12 +10,12 @@ from scipy import io
 forward_speed = 2.7
 
 road = flx.Road(
-                step_width=0.01,
-                step_height=0.08,
+                step_width=0.1,
+                step_height=0.15,
                 step_profile_phase=np.pi,
                 high_res=True
                 )
-tyre = flx.Tyre_Continous(initial_x=2,
+tyre = flx.Tyre_Continous(initial_x=2.15,
                 initial_y=0.34,
                 road=road,
                 free_radius=0.788/2,
