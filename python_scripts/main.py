@@ -15,7 +15,7 @@ road = flx.Road(
                 step_profile_phase=np.pi,
                 high_res=True
                 )
-tyre = flx.Tyre_Continous(initial_x=2.15,
+tyre = flx.Tyre_Continous(initial_x=2.25,
                 initial_y=0.34,
                 road=road,
                 free_radius=0.788/2,
@@ -29,7 +29,7 @@ q_car = flx.SprungMass(tyre_inst=tyre,
                        spring_neutral_length=1,
                        damping_ratio=0.1
                        )
-qmain_fig = plt.figure()
+qmain_fig, Ax = plt.subplots(2 , 1)
 tyre.find_new_contacts()
 
 #for i in range(500): 
@@ -39,7 +39,7 @@ while tyre.states.position.x < 3:
     # main dynamics updates, should really be done in a function
     # but because of the way the external forces are implemented, it's done 
     # explicityly here
-    
+    plt.sca(Ax[0])
     q_car.update_states()
     tyre.update_states(-(q_car.spring_force + q_car.damper_force))
     print(f'{1000*(time.time() - st):.1f} ms/t {q_car.states.velocity.y:0.3f}')
@@ -53,10 +53,15 @@ while tyre.states.position.x < 3:
               tyre.states.position.x + tyre.free_radius*1.5))
     plt.ylim((tyre.states.position.y - tyre.free_radius*1.1, 
               q_car.states.position.y + tyre.free_radius*1.1))
+    plt.sca(Ax[1])
+    for c in tyre.contacts:
+        plt.plot(c.fit_theta + c.centre_point_angle(),c.fit_deformation, '.')
+        plt.plot(c.fit_theta_old + c.centre_point_angle(), c.fit_deformation_old, "--")
     while not plt.waitforbuttonpress():
         pass
     logged_data.append([tyre.forces, tyre.states.position])
-    plt.cla()
+    for ax in Ax:
+        ax.cla()
 print("finished")
 # logged_forces = np.array([v[0] for v in logged_data])
 # position = np.array([v[1] for v in logged_data])

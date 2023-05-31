@@ -145,7 +145,21 @@ def beam_force_integral(beta, boundary_deformation, boundary_derivative):
     radial_force = beta*(2*(A + B)*beta**2 + A - B)/(4*beta**4+1)
     tangential_force = (A + 2*b*beta**2)/(4*beta**4+1)
     return radial_force , tangential_force
-
+def fit_quadratic(left_point:Vector2,
+                  right_point:Vector2,
+                  y0:float) -> np.polynomial.Polynomial:
+    # return quadratic numpy polynomial that passes through the point 
+    # left_point, right_point and (0 , y0)
+    #assert left_point.x < 0 and right_point.x > 0
+    (xl, yl) = left_point
+    (xr , yr)= right_point
+    if xl == xr:
+        return np.polynomial.Polynomial([y0 , 0 , 0])
+    p = np.polynomial.polynomial.Polynomial([
+            y0,
+            -(xl**2*y0 - xr**2*y0 - xl**2*yr + xr**2*yl)/(xl*xr*(xl - xr)),
+            (xl*y0 - xr*y0 - xl*yr + xr*yl)/(xl*xr*(xl - xr))])
+    return p
 def interpolate_boundary_condition(centre:Vector2,
                                    radius:float,
                                    point1:Vector2,
@@ -551,7 +565,8 @@ class Tyre(phsx.RigidBody):
 
 class Tyre_Continous(phsx.RigidBody):
     beta = 8
-    stiffness = 150000.
+    lump_stiffness = 150000.
+    element_stiffness = 150
     def __init__(self, initial_x, initial_y,road:Road,
                  free_radius = 1., node_res_deg = 1.,
                  x_speed = 0, y_speed = 0) -> None:
@@ -613,7 +628,11 @@ class Tyre_Continous(phsx.RigidBody):
         #self.init_contacts()
         self.update_contacts()
     def update_contacts(self):
-        self.find_new_contacts(start_idx=self.contacts[-1].collision.end_road_idx+5)
+        if len(self.contacts) == 0:
+            start_idx = 0
+        else:
+            start_idx=self.contacts[-1].collision.end_road_idx+5
+        self.find_new_contacts(start_idx)
         self.contacts = [c for c in self.contacts if c.update() is not None]    
     @dataclass
     class Collision:
@@ -656,6 +675,10 @@ class Tyre_Continous(phsx.RigidBody):
                         self.centre_point = self.tyre.road.points[idx]
             self.fore_separation = self.centre_point
             self.aft_separation = self.centre_point
+            self.fit_theta = None
+            self.fit_deformation = None
+            self.fit_theta_old = None
+            self.fit_deformation_old = None
             self.centre_point_angle = lambda : np.arctan2(self.centre_point.y - self.tyre.states.position.y,
                                                  self.centre_point.x - self.tyre.states.position.x)
             self.fore_theta = lambda : np.linspace(0 , np.deg2rad(90), 90) + np.arctan2(
@@ -668,6 +691,7 @@ class Tyre_Continous(phsx.RigidBody):
                                 )
             self.fore_deformation = self.fore_theta() * 0
             self.aft_deformation = self.aft_theta() * 0
+            self.centre_migration_theta = None
             self.set_boundaries()
             self.set_deformation()
         def draw(self):
@@ -728,10 +752,30 @@ class Tyre_Continous(phsx.RigidBody):
                                                               self.tyre.road.dydx[idx])
         def get_forces_centre_point(self):
             total_force = (self.tyre.free_radius -\
-                (self.centre_point - self.tyre.states.position).magnitude()) * self.tyre.stiffness
+                (self.centre_point - self.tyre.states.position).magnitude()) * self.tyre.lump_stiffness
             return total_force*(self.tyre.states.position - self.centre_point).normalize()
         def get_forces_integral(self):
-            contact
+            contact_deformation = self.tyre.free_radius - \
+                 (self.centre_point - self.tyre.states.position).magnitude()
+            contact_patch_length = 0.5*(self.fore_separation - self.aft_separation).magnitude()
+            # quadratic pressure: 
+            # p = -ax^2 + y0 with p = max @ x = 0 and p = 0 @ x = contact_patch_ragnge
+        def get_contact_pressure(self):
+            #small angle approx
+            contact_patch_length_fore = (self.fore_separation - self.centre_point).magnitude()/self.tyre.free_radius
+            contact_patch_length_aft = (self.aft_separation - self.centre_point).magnitude()/self.tyre.free_radius
+            #using 90 because we used the same in set_deformation, FIX IT
+            leading_section_theta = np.linspace(0 , np.deg2rad(90), 90)+ contact_patch_length_fore
+            trailing_section_theta = np.linspace(-np.deg2rad(90), 0, 90) - contact_patch_length_aft
+            contact_patch_theta = np.arange(-contact_patch_length_aft, contact_patch_length_fore, np.deg2rad(1))
+            centre_point_deformation = (self.centre_point - self.tyre.states.position).magnitude() - self.tyre.free_radius
+            contact_patch_pressure_fit = fit_quadratic(Vector2(-contact_patch_length_aft, self.aft_deformation[0]),
+                                                      Vector2(contact_patch_length_fore,self.fore_deformation[0]),
+                                                     centre_point_deformation)
+            contact_patch_radial_deformation = contact_patch_pressure_fit(contact_patch_theta)
+            t= np.hstack((trailing_section_theta, contact_patch_theta, leading_section_theta))
+            w = -np.hstack((np.flip(self.aft_deformation), contact_patch_radial_deformation,self.fore_deformation)) 
+            return t ,w
         def set_deformation(self):
             theta = np.linspace(0 , np.deg2rad(90), 90)
             #fore
@@ -745,19 +789,26 @@ class Tyre_Continous(phsx.RigidBody):
             bc2 = -self.aft_separation_dr_dtheta
             self.aft_deformation = beam_solution(self.tyre.beta,
                                                   theta,
-                                                  bc1,bc2)                                     
+                                                  bc1,bc2) 
+            self.fit_theta , self.fit_deformation = self.get_contact_pressure()                                    
         def update(self):
             # check if contact still exists
             if (self.centre_point - self.tyre.states.position).magnitude() > self.tyre.free_radius:
                 return None
+            #which way to go on the road to find the new centre point idx
             road_tangent_vector = self.tyre.road.points[self.centre_point_idx+1] -\
                 self.tyre.road.points[self.centre_point_idx-1]
             idx_increment = np.int32(np.sign(
                     road_tangent_vector.dot(self.tyre.states.velocity)))
+            prev_centre_idx = self.centre_point_idx
             while ((self.tyre.road.points[self.centre_point_idx] - self.tyre.states.position).magnitude() >\
                 (self.tyre.road.points[self.centre_point_idx+idx_increment] - self.tyre.states.position).magnitude()):
                 self.centre_point_idx += idx_increment
             self.centre_point = self.tyre.road.points[self.centre_point_idx]
+            rolling_radius = (self.centre_point - self.tyre.states.position).magnitude()
+            self.centre_migration_theta = (self.tyre.road.points[prev_centre_idx] - self.centre_point).magnitude()/rolling_radius
+            self.fit_deformation_old = self.fit_deformation
+            self.fit_theta_old = self.fit_theta - self.centre_migration_theta
             self.collision.update(self.centre_point_idx,
                                   self.tyre.states.position,
                                   self.tyre.free_radius,
