@@ -7,7 +7,7 @@ os.system("clear")
 from scipy import io
 
 # defining sim objects, all moving objects inherit from rigid body
-forward_speed = 2.7
+forward_speed = 10
 
 road = flx.Road(
                 step_width=0.1,
@@ -15,7 +15,7 @@ road = flx.Road(
                 step_profile_phase=np.pi,
                 high_res=True
                 )
-tyre = flx.Tyre_Continous(initial_x=2.25,
+tyre = flx.Tyre_Continous(initial_x=1.5,
                 initial_y=0.34,
                 road=road,
                 free_radius=0.788/2,
@@ -55,8 +55,7 @@ while tyre.states.position.x < 3:
               q_car.states.position.y + tyre.free_radius*1.1))
     plt.sca(Ax[1])
     for c in tyre.contacts:
-        plt.plot(c.fit_theta + c.centre_point_angle(),c.fit_deformation, '.')
-        plt.plot(c.fit_theta_old + c.centre_point_angle(), c.fit_deformation_old, "--")
+        c.draw_pressure()
     while not plt.waitforbuttonpress():
         pass
     logged_data.append([tyre.forces, tyre.states.position])

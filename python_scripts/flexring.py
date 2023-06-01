@@ -4,6 +4,7 @@ import matplotlib.patches as patches
 import physics_engine as phsx
 from euclid3 import Vector2
 from dataclasses import dataclass
+import math_utils as ut
 from scipy import interpolate
 
 '''
@@ -13,85 +14,8 @@ Deflection of a node is positive towards the outside of the tyre(increase in rad
 '''
 dt = 0.01
 
-def intersection(p1, p2, P1, P2):
-    x0, y0 = p1
-    x1, y1 = p2
-    X0, Y0 = P1
-    X1, Y1 = P2
 
-    # calculate the denominator of the two equations
-    den = (Y1 - Y0)*(x1 - x0) - (X1 - X0)*(y1-y0)
-
-    # check if the lines are parallel
-    if den == 0:
-        return None
-
-    # calculate the numerators of the two equations
-    num1 = (X1 - X0)*(y0 - Y0) + (X0 - x0)*(Y1-Y0)
-    num2 = (x1 - x0)*(y0 -Y0) + (X0 - x0)*(y1 - y0)
-
-    # calculate the parameters the ratios of intersetion point distance from 
-    # the line segment start point to line segement length
-    distance_ratio_line_1 = num1 / den
-    distance_ratio_line_2 = num2 / den
-
-    # check if the intersection point is within the line segments
-    if distance_ratio_line_1 >= 0 and distance_ratio_line_1 <= 1 and\
-          distance_ratio_line_2 >= 0 and distance_ratio_line_2 <= 1:
-        return distance_ratio_line_2
-
-    # no intersection found
-    return None
-def circle_line_intersection(line_start:Vector2, line_end:Vector2, circle_centre:Vector2, radius:float):
-    #v_ denotes a vector starting at line start
-    v_line = line_end - line_start
-    v_centre = line_start - circle_centre
-    # quadratic equation constants:
-    A = v_line.dot(v_line)
-    B = 2*v_centre.dot(v_line)
-    C = v_centre.dot(v_centre) - radius**2
-    Result = [None, None]
-    if (discriminant := B**2 - 4*A*C) <= 0:
-        return None
-    discriminant = np.sqrt(discriminant)
-    t1 = (-B - discriminant)/(2*A)
-    t2 = (-B + discriminant)/(2*A)
-    if (t1<0) or (t1 > 1):
-        if(t2<0) or (t2 > 1):
-            return None
-    if (t1 > 0 and t1 < 1):
-        Result[0] = line_start + t1*v_line
-    if(t2 > 0 and t2 < 1):
-        Result[1] = line_start + t2*v_line
-    return Result
-def find_chord_centre(p1:Vector2, p2:Vector2, circle_centre:Vector2):
-    #given two points p1 and p2, find the closest point on line segment p1-p2 to circle_centre
-    # points p1 and p2 are assumed inside the circle, no checks are carried out. BE CAREFUL!
-    v_line = p2 - p1
-    v_centre = p1 - circle_centre
-    t = -(v_line.dot(v_centre))/(v_line.magnitude_squared())
-    t = min(max(t , 0),1)
-    return p1 + t*v_line, t
-def polar_derivative(point:Vector2, dy):
-    #given point x,y and the deriavtive in cartesian coordiantes dy
-    #calculates dr/d(theta) in polar coordinates
-    x = point.x
-    y = point.y
-    r = np.sqrt(x**2 + y**2)
-    dr = r*(x + y*dy)/(x*dy - y)
-    return dr
-def polar_second_derivative(point:Vector2, dy , ddy):
-    x = point.x
-    y = point.y
-    r = np.sqrt(x**2 + y**2)
-    dr_dtheta = polar_derivative(point, dy)
-    dx_dtheta = dr_dtheta*x/r  - y
-    dy_dtheta = dr_dtheta*y/r + x
-    dydx_dtheta = ddy*dx_dtheta
-    ddr_dtheta = ((x*dy - y)*(dx_dtheta + y*dydx_dtheta + dy*dy_dtheta) -\
-                  (y*dy + x)*(dy*dx_dtheta + dydx_dtheta*x - dy_dtheta)) * r/(x*dy - y)**2\
-                   +dr_dtheta*(y*dy  +x)/(x*dy - y)
-    return ddr_dtheta
+   
 def fit_poly(P1, P2, P3):
     x1, y1, dy1 = (P1[0], P1[1], P1[2])
     x2, y2, dy2 = (P2[0], P2[1], P2[2])
@@ -129,37 +53,6 @@ def construct_piecewise_poly(start, end, peak):
             return a2*x**2 + b2*x + c2
 
     return piecewise_polynomial
-def beam_solution(beta,theta,boundary_deformation, boundary_derivative):
-    return np.exp(-beta*theta)*\
-            (boundary_deformation*np.cos(beta*theta) +
-            (boundary_derivative/beta + boundary_deformation)*np.sin(beta*theta))
-def beam_force_integral(beta, boundary_deformation, boundary_derivative):
-    # radial force: 
-    # integral exp(-beta*theta)*(A*cos(beta*theta) + B*sin(beta*theta))*cos(theta)
-    # theta from 0 to infinity with a positive beta
-    # tangential force: 
-    #integral exp(-beta*theta)*(A*cos(beta*theta) + B*sin(beta*theta))*sin(theta)
-    # theta from 0 to infinity with a positive beta
-    A = boundary_deformation
-    B = boundary_derivative/beta + boundary_deformation
-    radial_force = beta*(2*(A + B)*beta**2 + A - B)/(4*beta**4+1)
-    tangential_force = (A + 2*b*beta**2)/(4*beta**4+1)
-    return radial_force , tangential_force
-def fit_quadratic(left_point:Vector2,
-                  right_point:Vector2,
-                  y0:float) -> np.polynomial.Polynomial:
-    # return quadratic numpy polynomial that passes through the point 
-    # left_point, right_point and (0 , y0)
-    #assert left_point.x < 0 and right_point.x > 0
-    (xl, yl) = left_point
-    (xr , yr)= right_point
-    if xl == xr:
-        return np.polynomial.Polynomial([y0 , 0 , 0])
-    p = np.polynomial.polynomial.Polynomial([
-            y0,
-            -(xl**2*y0 - xr**2*y0 - xl**2*yr + xr**2*yl)/(xl*xr*(xl - xr)),
-            (xl*y0 - xr*y0 - xl*yr + xr*yl)/(xl*xr*(xl - xr))])
-    return p
 def interpolate_boundary_condition(centre:Vector2,
                                    radius:float,
                                    point1:Vector2,
@@ -585,7 +478,7 @@ class Tyre_Continous(phsx.RigidBody):
         while self.road.points[road_idx].x < self.states.position.x - self.free_radius:
                 road_idx += 1
         while self.road.points[road_idx].x < self.states.position.x + self.free_radius:
-            T= circle_line_intersection(self.road.points[road_idx],
+            T= ut.circle_line_intersection(self.road.points[road_idx],
                                               self.road.points[road_idx+1],
                                               self.states.position,
                                               self.free_radius) 
@@ -598,7 +491,7 @@ class Tyre_Continous(phsx.RigidBody):
                     # if the line crosses in only 1 point
                     while self.collisions[-1].end is None:
                         road_idx +=1
-                        T = circle_line_intersection(self.road.points[road_idx],
+                        T = ut.circle_line_intersection(self.road.points[road_idx],
                                                         self.road.points[road_idx+1],
                                                         self.states.position,
                                                         self.free_radius)
@@ -722,12 +615,23 @@ class Tyre_Continous(phsx.RigidBody):
                     self.tyre.states.position.x,
                      np.sin(self.aft_theta())*(self.aft_deformation+ self.tyre.free_radius)+\
                             self.tyre.states.position.y) 
+        def draw_pressure(self):
+            plt.plot(np.rad2deg(self.fit_theta + self.centre_point_angle()),
+                                self.fit_deformation, '.')
+            plt.plot(np.rad2deg(self.fit_theta_old + self.centre_point_angle()),
+                     self.fit_deformation_old, "--")
+            plt.plot(np.rad2deg(self.contact_patch_theta[0] + self.centre_point_angle()),
+                     -self.aft_deformation[0], "m*")
+            plt.plot(np.rad2deg(self.contact_patch_theta[-1] + self.centre_point_angle()),
+                     -self.fore_deformation[0], "m*")
+
+     
         def is_boundary_condition(self, idx, direction):
-            road_dr_dtheta = polar_derivative(
+            road_dr_dtheta = ut.polar_derivative(
                                             point = self.tyre.road.points[idx] - self.tyre.states.position,
                                             dy = self.tyre.road.dydx[idx]
                                             )
-            road_ddr_dtheta = polar_second_derivative(
+            road_ddr_dtheta = ut.polar_second_derivative(
                                                     point=self.tyre.road.points[idx] - self.tyre.states.position,
                                                     dy = self.tyre.road.dydx[idx],
                                                     ddy = self.tyre.road.ddydx[idx]
@@ -741,14 +645,14 @@ class Tyre_Continous(phsx.RigidBody):
             while (not self.is_boundary_condition(idx, 1)):
                 idx = idx+1
             self.fore_separation = self.tyre.road.points[idx]
-            self.fore_separation_dr_dtheta = polar_derivative(self.fore_separation - self.tyre.states.position,
+            self.fore_separation_dr_dtheta = ut.polar_derivative(self.fore_separation - self.tyre.states.position,
                                                               self.tyre.road.dydx[idx])
             # aft
             idx = self.centre_point_idx
             while (not self.is_boundary_condition(idx , -1)):
                 idx = idx-1
             self.aft_separation = self.tyre.road.points[idx]
-            self.aft_separation_dr_dtheta = polar_derivative(self.aft_separation - self.tyre.states.position,
+            self.aft_separation_dr_dtheta = ut.polar_derivative(self.aft_separation - self.tyre.states.position,
                                                               self.tyre.road.dydx[idx])
         def get_forces_centre_point(self):
             total_force = (self.tyre.free_radius -\
@@ -767,13 +671,13 @@ class Tyre_Continous(phsx.RigidBody):
             #using 90 because we used the same in set_deformation, FIX IT
             leading_section_theta = np.linspace(0 , np.deg2rad(90), 90)+ contact_patch_length_fore
             trailing_section_theta = np.linspace(-np.deg2rad(90), 0, 90) - contact_patch_length_aft
-            contact_patch_theta = np.arange(-contact_patch_length_aft, contact_patch_length_fore, np.deg2rad(1))
+            self.contact_patch_theta = np.arange(-contact_patch_length_aft, contact_patch_length_fore, np.deg2rad(1))
             centre_point_deformation = (self.centre_point - self.tyre.states.position).magnitude() - self.tyre.free_radius
-            contact_patch_pressure_fit = fit_quadratic(Vector2(-contact_patch_length_aft, self.aft_deformation[0]),
+            contact_patch_pressure_fit = ut.fit_quadratic(Vector2(-contact_patch_length_aft, self.aft_deformation[0]),
                                                       Vector2(contact_patch_length_fore,self.fore_deformation[0]),
                                                      centre_point_deformation)
-            contact_patch_radial_deformation = contact_patch_pressure_fit(contact_patch_theta)
-            t= np.hstack((trailing_section_theta, contact_patch_theta, leading_section_theta))
+            contact_patch_radial_deformation = contact_patch_pressure_fit(self.contact_patch_theta)
+            t= np.hstack((trailing_section_theta, self.contact_patch_theta, leading_section_theta))
             w = -np.hstack((np.flip(self.aft_deformation), contact_patch_radial_deformation,self.fore_deformation)) 
             return t ,w
         def set_deformation(self):
@@ -781,13 +685,13 @@ class Tyre_Continous(phsx.RigidBody):
             #fore
             bc1 = (self.tyre.states.position - self.fore_separation).magnitude() - self.tyre.free_radius
             bc2 = self.fore_separation_dr_dtheta
-            self.fore_deformation = beam_solution(self.tyre.beta,
+            self.fore_deformation = ut.beam_solution(self.tyre.beta,
                                                   theta,
                                                   bc1,bc2)
             #aft
             bc1 = (self.tyre.states.position - self.aft_separation).magnitude() - self.tyre.free_radius
             bc2 = -self.aft_separation_dr_dtheta
-            self.aft_deformation = beam_solution(self.tyre.beta,
+            self.aft_deformation = ut.beam_solution(self.tyre.beta,
                                                   theta,
                                                   bc1,bc2) 
             self.fit_theta , self.fit_deformation = self.get_contact_pressure()                                    
@@ -816,7 +720,8 @@ class Tyre_Continous(phsx.RigidBody):
             self.set_boundaries()
             self.set_deformation()
             return 1
-
+        def get_hysteresis_force(self):
+            index_shift
 class SprungMass(phsx.RigidBody):
     def __init__(self,
                 tyre_inst:Tyre_Continous,
