@@ -457,13 +457,15 @@ class Tyre(phsx.RigidBody):
                     -2*(Tyre.beta**2)*(direction*self.road_dr_dtheta/Tyre.beta + self.road_dr)
 
 class Tyre_Continous(phsx.RigidBody):
-    beta = 8
-    lump_stiffness = 150000.
-    element_stiffness = 150
+    beta = 5
+    lump_stiffness = 100000.
+    lump_damping = 1000
+    element_stiffness = 500000
+    element_damping = 1000
     def __init__(self, initial_x, initial_y,road:Road,
                  free_radius = 1., node_res_deg = 1.,
-                 x_speed = 0, y_speed = 0) -> None:
-        super().__init__(mass = 50, initial_x=initial_x, initial_y = initial_y,
+                 x_speed = 0, y_speed = 0, mass = 50) -> None:
+        super().__init__(mass = mass, initial_x=initial_x, initial_y = initial_y,
                        initial_x_dot = x_speed, initial_y_dot = y_speed,constraint_type='101'
                        )
         self.road = road
@@ -473,6 +475,7 @@ class Tyre_Continous(phsx.RigidBody):
         # nodes are only used for visualisation
         self.node_angles = np.deg2rad(np.linspace(0 , 360, 361)[0:-1])
         self.node_r = 0*self.node_angles + self.free_radius
+        self.external_forces = 0
     def find_new_collisions(self, start_idx=0):
         road_idx = start_idx
         while self.road.points[road_idx].x < self.states.position.x - self.free_radius:
@@ -505,7 +508,7 @@ class Tyre_Continous(phsx.RigidBody):
             self.contacts.append(Tyre_Continous.Contact(self, c))
             self.collisions.remove(c)
     def draw(self):
-        circle_obj = plt.Circle(self.states.position, self.free_radius, fill=False)
+        circle_obj = patches.Circle(self.states.position, self.free_radius, linewidth=3,fill=False)
         plt.gca().add_patch(circle_obj)
         for c in self.collisions:
             plt.plot(c.start.x, c.start.y , "r*")
@@ -517,6 +520,7 @@ class Tyre_Continous(phsx.RigidBody):
         for c in self.contacts:
             self.forces = self.forces + c.get_forces_centre_point()
     def update_states(self, external_forces):
+        self.external_forces = external_forces
         super().update_states(external_forces)
         #self.init_contacts()
         self.update_contacts()
@@ -568,6 +572,8 @@ class Tyre_Continous(phsx.RigidBody):
                         self.centre_point = self.tyre.road.points[idx]
             self.fore_separation = self.centre_point
             self.aft_separation = self.centre_point
+            self.fore_separation_theta = lambda : (self.fore_separation - self.centre_point).magnitude()/self.tyre.free_radius
+            self.aft_separation_theta = lambda : (self.aft_separation - self.centre_point).magnitude()/self.tyre.free_radius
             self.fit_theta = None
             self.fit_deformation = None
             self.fit_theta_old = None
@@ -582,6 +588,9 @@ class Tyre_Continous(phsx.RigidBody):
                                 (self.aft_separation.y - self.tyre.states.position.y),
                                 (self.aft_separation.x - self.tyre.states.position.x)
                                 )
+            #hack
+            self.total_force = 0
+            self.prev_total_force = 0
             self.fore_deformation = self.fore_theta() * 0
             self.aft_deformation = self.aft_theta() * 0
             self.centre_migration_theta = None
@@ -590,9 +599,9 @@ class Tyre_Continous(phsx.RigidBody):
         def draw(self):
             plt.plot(self.centre_point.x , self.centre_point.y , "o")
             plt.plot(self.aft_separation.x, self.aft_separation.y,
-             "x", color="magenta", markersize=15)
+             "x", color="magenta", markersize=15, markeredgewidth=5)
             plt.plot(self.fore_separation.x, self.fore_separation.y,
-            "|", color="magenta", markersize= 15)
+            "x", color="red", markersize= 15, markeredgewidth = 5)
             #fore
             '''
             theta = self.fore_theta + np.arctan2(
@@ -603,7 +612,7 @@ class Tyre_Continous(phsx.RigidBody):
             plt.plot(np.cos(self.fore_theta())*(self.fore_deformation + self.tyre.free_radius)+\
                     self.tyre.states.position.x,
                      np.sin(self.fore_theta())*(self.fore_deformation+ self.tyre.free_radius)+\
-                            self.tyre.states.position.y) 
+                            self.tyre.states.position.y, lw = 3) 
             #aft
             '''
             theta = -self.aft_theta + np.arctan2(
@@ -614,18 +623,25 @@ class Tyre_Continous(phsx.RigidBody):
             plt.plot(np.cos(self.aft_theta())*(self.aft_deformation + self.tyre.free_radius)+\
                     self.tyre.states.position.x,
                      np.sin(self.aft_theta())*(self.aft_deformation+ self.tyre.free_radius)+\
-                            self.tyre.states.position.y) 
+                            self.tyre.states.position.y, lw=3) 
         def draw_pressure(self):
-            plt.plot(np.rad2deg(self.fit_theta + self.centre_point_angle()),
-                                self.fit_deformation, '.')
-            plt.plot(np.rad2deg(self.fit_theta_old + self.centre_point_angle()),
-                     self.fit_deformation_old, "--")
-            plt.plot(np.rad2deg(self.contact_patch_theta[0] + self.centre_point_angle()),
-                     -self.aft_deformation[0], "m*")
-            plt.plot(np.rad2deg(self.contact_patch_theta[-1] + self.centre_point_angle()),
-                     -self.fore_deformation[0], "m*")
-
-     
+            # plt.plot(np.rad2deg(self.fit_theta + self.centre_point_angle()),
+            #                     self.fit_deformation, '.')
+            # plt.plot(np.rad2deg(self.fit_theta_old + self.centre_point_angle()),
+            #          self.fit_deformation_old, "--")
+            # plt.plot(np.rad2deg(self.contact_patch_theta[0] + self.centre_point_angle()),
+            #          -self.aft_deformation[0]*self.tyre.element_stiffness, "mx", markeredgewidth=3, markersize = 10)
+            # plt.plot(np.rad2deg(self.contact_patch_theta[-1] + self.centre_point_angle()),
+            #          -self.fore_deformation[0]*self.tyre.element_stiffness, "rx", markeredgewidth = 3, markersize = 10)
+            theta, dr, idx = self.get_deformation_diff()
+            dr = dr/self.tyre.simParameters["time_step"]
+            plt.plot(np.rad2deg(theta + self.centre_point_angle()),
+                     0.0001*self.fit_deformation[idx]*self.tyre.element_stiffness, lw=3)
+            plt.plot(np.rad2deg(theta + self.centre_point_angle()),
+                     0.0001*1.06*(self.fit_deformation[idx]*self.tyre.element_stiffness+ 
+                     dr * self.tyre.element_damping), '--' , lw=3)
+            plt.xlabel("theta deg") 
+            plt.ylabel("normal pressure MPa")          
         def is_boundary_condition(self, idx, direction):
             road_dr_dtheta = ut.polar_derivative(
                                             point = self.tyre.road.points[idx] - self.tyre.states.position,
@@ -655,9 +671,26 @@ class Tyre_Continous(phsx.RigidBody):
             self.aft_separation_dr_dtheta = ut.polar_derivative(self.aft_separation - self.tyre.states.position,
                                                               self.tyre.road.dydx[idx])
         def get_forces_centre_point(self):
-            total_force = (self.tyre.free_radius -\
-                (self.centre_point - self.tyre.states.position).magnitude()) * self.tyre.lump_stiffness
-            return total_force*(self.tyre.states.position - self.centre_point).normalize()
+            if self.fit_deformation_old is None:
+                prev_centre_point_deformation = 0
+            else:
+                prev_centre_point_deformation = np.max(np.abs(self.fit_deformation_old))
+            current_centre_point_deformation = np.max(np.abs(self.fit_deformation))
+            #spring_force = current_centre_point_deformation *self.tyre.lump_stiffness
+            spring_force = self.tyre.element_stiffness *\
+                  np.trapz(y = self.fit_deformation, x = self.fit_theta)
+            damping_force = (current_centre_point_deformation - prev_centre_point_deformation)/\
+                (self.tyre.simParameters["time_step"]) * self.tyre.lump_damping
+            total_force = spring_force + damping_force
+            if np.isnan(spring_force) or np.isnan(damping_force):
+                total_force = 0
+            filter_ratio = 0
+            self.total_force = filter_ratio*self.prev_total_force +\
+                  (1-filter_ratio)*total_force
+            self.prev_total_force = self.total_force
+            print(f'\tspring force: {spring_force:.1f}\n\tdamping force = {damping_force:.1f}\n')
+            
+            return self.total_force*(self.tyre.states.position - self.centre_point).normalize()
         def get_forces_integral(self):
             contact_deformation = self.tyre.free_radius - \
                  (self.centre_point - self.tyre.states.position).magnitude()
@@ -665,16 +698,15 @@ class Tyre_Continous(phsx.RigidBody):
             # quadratic pressure: 
             # p = -ax^2 + y0 with p = max @ x = 0 and p = 0 @ x = contact_patch_ragnge
         def get_contact_pressure(self):
-            #small angle approx
-            contact_patch_length_fore = (self.fore_separation - self.centre_point).magnitude()/self.tyre.free_radius
-            contact_patch_length_aft = (self.aft_separation - self.centre_point).magnitude()/self.tyre.free_radius
             #using 90 because we used the same in set_deformation, FIX IT
-            leading_section_theta = np.linspace(0 , np.deg2rad(90), 90)+ contact_patch_length_fore
-            trailing_section_theta = np.linspace(-np.deg2rad(90), 0, 90) - contact_patch_length_aft
-            self.contact_patch_theta = np.arange(-contact_patch_length_aft, contact_patch_length_fore, np.deg2rad(1))
+            leading_section_theta = np.linspace(0 , np.deg2rad(90), 90)+ self.fore_separation_theta()
+            trailing_section_theta = np.linspace(-np.deg2rad(90), 0, 90) - self.aft_separation_theta()
+            self.contact_patch_theta = np.arange(-self.aft_separation_theta(), self.fore_separation_theta(), np.deg2rad(1))
+            if len(self.contact_patch_theta) == 0:
+                self.contact_patch_theta = np.array([0])
             centre_point_deformation = (self.centre_point - self.tyre.states.position).magnitude() - self.tyre.free_radius
-            contact_patch_pressure_fit = ut.fit_quadratic(Vector2(-contact_patch_length_aft, self.aft_deformation[0]),
-                                                      Vector2(contact_patch_length_fore,self.fore_deformation[0]),
+            contact_patch_pressure_fit = ut.fit_quadratic(Vector2(-self.aft_separation_theta(), self.aft_deformation[0]),
+                                                      Vector2(self.fore_separation_theta(),self.fore_deformation[0]),
                                                      centre_point_deformation)
             contact_patch_radial_deformation = contact_patch_pressure_fit(self.contact_patch_theta)
             t= np.hstack((trailing_section_theta, self.contact_patch_theta, leading_section_theta))
@@ -695,6 +727,18 @@ class Tyre_Continous(phsx.RigidBody):
                                                   theta,
                                                   bc1,bc2) 
             self.fit_theta , self.fit_deformation = self.get_contact_pressure()                                    
+        def get_deformation_diff(self):
+            #this is a very hacky and horrible way to do it
+            # we won't have to do it this way in the implementation
+            overlap_range_idx = np.where(np.abs(self.fit_deformation) >0.001)
+            old_deformation_interpolated = interpolate.interp1d(self.fit_theta_old,
+                                                                self.fit_deformation_old,
+                                                                kind="linear")(self.fit_theta[overlap_range_idx])
+            return self.fit_theta[overlap_range_idx],\
+                  self.fit_deformation[overlap_range_idx] - old_deformation_interpolated,\
+                  overlap_range_idx
+            
+            pass
         def update(self):
             # check if contact still exists
             if (self.centre_point - self.tyre.states.position).magnitude() > self.tyre.free_radius:
@@ -720,8 +764,7 @@ class Tyre_Continous(phsx.RigidBody):
             self.set_boundaries()
             self.set_deformation()
             return 1
-        def get_hysteresis_force(self):
-            index_shift
+
 class SprungMass(phsx.RigidBody):
     def __init__(self,
                 tyre_inst:Tyre_Continous,

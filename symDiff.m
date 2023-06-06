@@ -26,3 +26,17 @@ p2_y = polyval([get_val(sol.a2), get_val(sol.b2), get_val(sol.c2)], p2_x);
 plot(p1_x, p1_y);
 hold on 
 plot(p2_x , p2_y);
+%%
+clear all
+clc
+syms a  b xl xr yl yr y0 x
+A = [xl^2, xl;xr^2, xr]
+Y = [yl-y0;yr-y0]
+C = A\Y
+%%
+clear
+clc
+syms x x0 beta A B
+beam = exp(-beta*x)*(A * cos(beta*x) + B*sin(beta*x));
+beam_offset = expand(subs(beam , x + x0));
+pretty(collect(beam_offset, exp(-beta*x)*exp(-beta*x0)))
