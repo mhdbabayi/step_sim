@@ -15,14 +15,14 @@ initial_y = tyre_radius - (sprung_mass + unsprung_mass)*10/(flx.Tyre_Continous.l
 # defining sim objects, all moving objects inherit from rigid body
 
 road = flx.Road(
-                step_width=0.05,
+                step_width=0.1,
                 step_height=0.2,
                 step_profile_phase=np.pi,
                 high_res=True
                 )
 tyre = flx.Tyre_Continous(initial_x=2.2,
                           initial_y=initial_y+0.03,
-                          boundary_condition_file="./beta_5.mat",
+                          boundary_condition_file="./step_sim/beta_5.mat",
                           mass=unsprung_mass,
                           road=road,
                           free_radius=tyre_radius,
