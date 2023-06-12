@@ -15,13 +15,14 @@ initial_y = tyre_radius - (sprung_mass + unsprung_mass)*10/(flx.Tyre_Continous.l
 # defining sim objects, all moving objects inherit from rigid body
 
 road = flx.Road(
-                step_width=0.15,
+                step_width=0.05,
                 step_height=0.2,
                 step_profile_phase=np.pi,
                 high_res=True
                 )
-tyre = flx.Tyre_Continous(initial_x=initial_x,
+tyre = flx.Tyre_Continous(initial_x=2.2,
                           initial_y=initial_y+0.03,
+                          boundary_condition_file="./beta_5.mat",
                           mass=unsprung_mass,
                           road=road,
                           free_radius=tyre_radius,
@@ -62,10 +63,13 @@ while tyre.states.position.x < 4:
     plt.plot(road.x, road.y, color="brown")
     plt.gca().set_aspect('equal')
     plt.draw()
-    plt.xlim((tyre.states.position.x - tyre.free_radius*1.1,
-              tyre.states.position.x + tyre.free_radius*1.5))
-    plt.ylim((tyre.states.position.y - tyre.free_radius*1.1, 
-              q_car.states.position.y + tyre.free_radius*1.1))
+    # plt.xlim((tyre.states.position.x - tyre.free_radius*1.1,
+    #           tyre.states.position.x + tyre.free_radius*1.5))
+    # plt.ylim((tyre.states.position.y - tyre.free_radius*1.1, 
+    #           q_car.states.position.y + tyre.free_radius*1.1))
+    plt.xlim((tyre.contacts[-1].centre_point.x - tyre.free_radius, tyre.contacts[-1].centre_point.x + tyre.free_radius))
+    plt.ylim((tyre.contacts[-1].centre_point.y - tyre.free_radius, tyre.contacts[-1].centre_point.y + tyre.free_radius))
+
     plt.sca(Ax[1])
     for c in tyre.contacts:
         c.draw_pressure()

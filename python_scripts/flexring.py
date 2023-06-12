@@ -6,6 +6,7 @@ from euclid3 import Vector2
 from dataclasses import dataclass
 import math_utils as ut
 from scipy import interpolate
+from scipy import io
 
 '''
 sign convention: 
@@ -463,6 +464,7 @@ class Tyre_Continous(phsx.RigidBody):
     element_stiffness = 500000
     element_damping = 1000
     def __init__(self, initial_x, initial_y,road:Road,
+                 boundary_condition_file:str,
                  free_radius = 1., node_res_deg = 1.,
                  x_speed = 0, y_speed = 0, mass = 50) -> None:
         super().__init__(mass = mass, initial_x=initial_x, initial_y = initial_y,
@@ -476,6 +478,13 @@ class Tyre_Continous(phsx.RigidBody):
         self.node_angles = np.deg2rad(np.linspace(0 , 360, 361)[0:-1])
         self.node_r = 0*self.node_angles + self.free_radius
         self.external_forces = 0
+        self.main_interpolator = None
+        self.large_terrain_radius_interpolator = None
+        self.large_penetration_interpolator = None
+        self.min_terrain_radius = None
+        self.min_penetration = None
+        self.max_terrain_radius = None
+        self.max_penetration =None
     def find_new_collisions(self, start_idx=0):
         road_idx = start_idx
         while self.road.points[road_idx].x < self.states.position.x - self.free_radius:
@@ -508,7 +517,7 @@ class Tyre_Continous(phsx.RigidBody):
             self.contacts.append(Tyre_Continous.Contact(self, c))
             self.collisions.remove(c)
     def draw(self):
-        circle_obj = patches.Circle(self.states.position, self.free_radius, linewidth=3,fill=False)
+        circle_obj = patches.Circle(self.states.position, self.free_radius, linewidth=1,fill=False)
         plt.gca().add_patch(circle_obj)
         for c in self.collisions:
             plt.plot(c.start.x, c.start.y , "r*")
@@ -531,6 +540,25 @@ class Tyre_Continous(phsx.RigidBody):
             start_idx=self.contacts[-1].collision.end_road_idx+5
         self.find_new_contacts(start_idx)
         self.contacts = [c for c in self.contacts if c.update() is not None]    
+    def setup_interpolators(self, file_name:str):
+        matlab_data = io.loadmat(file_name=file_name)
+        penetration = matlab_data["penetration_num"][0]
+        terrain_radius = matlab_data["terrain_radius_num"][0]
+        theta = matlab_data["fitted_results"]
+        X , Y = np.meshgrid(terrain_radius , penetration)
+        self.main_interpolator =interpolate.RegularGridInterpolator(
+            (penetration , terrain_radius),theta, method="linear")
+        self.large_penetration_interpolator = interpolate.interp1d(
+            terrain_radius , theta[-1 , :]
+        )
+        self.large_terrain_radius_interpolator = interpolate.interp1d(
+            penetration , theta[: , -1]
+        )
+        self.min_terrain_radius = terrain_radius[0]
+        self.min_penetration = penetration[0]
+        self.max_penetration = penetration[-1]
+        self.max_terrain_radius = terrain_radius[-1]
+
     @dataclass
     class Collision:
         start:Vector2
@@ -599,31 +627,47 @@ class Tyre_Continous(phsx.RigidBody):
         def draw(self):
             plt.plot(self.centre_point.x , self.centre_point.y , "o")
             plt.plot(self.aft_separation.x, self.aft_separation.y,
-             "x", color="magenta", markersize=15, markeredgewidth=5)
+             "x", color="magenta", markersize=5, markeredgewidth=2)
             plt.plot(self.fore_separation.x, self.fore_separation.y,
-            "x", color="red", markersize= 15, markeredgewidth = 5)
+            "x", color="red", markersize= 5, markeredgewidth = 2)
             #fore
-            '''
-            theta = self.fore_theta + np.arctan2(
-                (self.fore_separation.y - self.tyre.states.position.y),
-                (self.fore_separation.x - self.tyre.states.position.x)
-             )
-             '''
             plt.plot(np.cos(self.fore_theta())*(self.fore_deformation + self.tyre.free_radius)+\
                     self.tyre.states.position.x,
                      np.sin(self.fore_theta())*(self.fore_deformation+ self.tyre.free_radius)+\
-                            self.tyre.states.position.y, lw = 3) 
+                            self.tyre.states.position.y, lw = 1) 
             #aft
-            '''
-            theta = -self.aft_theta + np.arctan2(
-                (self.aft_separation.y - self.tyre.states.position.y),
-                (self.aft_separation.x - self.tyre.states.position.x)
-             )
-            '''
             plt.plot(np.cos(self.aft_theta())*(self.aft_deformation + self.tyre.free_radius)+\
                     self.tyre.states.position.x,
                      np.sin(self.aft_theta())*(self.aft_deformation+ self.tyre.free_radius)+\
-                            self.tyre.states.position.y, lw=3) 
+                            self.tyre.states.position.y, lw=1) 
+            curvature, normal = ut.get_circle_tangent_2points(tangent = (self.tyre.states.position - self.centre_point).cross() ,
+                                                         p0 = self.centre_point,
+                                                         p1 =self.collision.end)
+            if curvature != 0:
+                R = 1/curvature
+                centre = self.centre_point + R*normal
+                angle = np.rad2deg(np.arctan2(-normal.y, -normal.x))
+                plt.gca().add_patch(patches.Wedge(centre, R,angle-180,
+                                                   angle,
+                                                   fill=False,
+                                                   linewidth=2,
+                                                   color = "magenta",
+                                                   linestyle = "--",
+                                                   width = 0.0001))
+            curvature, normal = ut.get_circle_tangent_2points(tangent = (self.tyre.states.position - self.centre_point).cross() ,
+                                                         p0 = self.centre_point,
+                                                         p1 =self.collision.start)
+            if curvature != 0:
+                R = 1/curvature
+                centre = self.centre_point + R*normal
+                angle = np.rad2deg(np.arctan2(-normal.y, -normal.x))
+                plt.gca().add_patch(patches.Wedge(centre, R,angle,
+                                                   angle+180,
+                                                   fill=False,
+                                                   linewidth=2,
+                                                   color = "black",
+                                                   linestyle = "--",
+                                                   width = 0.0001))
         def draw_pressure(self):
             # plt.plot(np.rad2deg(self.fit_theta + self.centre_point_angle()),
             #                     self.fit_deformation, '.')
@@ -636,10 +680,10 @@ class Tyre_Continous(phsx.RigidBody):
             theta, dr, idx = self.get_deformation_diff()
             dr = dr/self.tyre.simParameters["time_step"]
             plt.plot(np.rad2deg(theta + self.centre_point_angle()),
-                     0.0001*self.fit_deformation[idx]*self.tyre.element_stiffness, lw=3)
+                     0.0001*self.fit_deformation[idx]*self.tyre.element_stiffness)
             plt.plot(np.rad2deg(theta + self.centre_point_angle()),
                      0.0001*1.06*(self.fit_deformation[idx]*self.tyre.element_stiffness+ 
-                     dr * self.tyre.element_damping), '--' , lw=3)
+                     dr * self.tyre.element_damping), '--')
             plt.xlabel("theta deg") 
             plt.ylabel("normal pressure MPa")          
         def is_boundary_condition(self, idx, direction):
@@ -670,6 +714,15 @@ class Tyre_Continous(phsx.RigidBody):
             self.aft_separation = self.tyre.road.points[idx]
             self.aft_separation_dr_dtheta = ut.polar_derivative(self.aft_separation - self.tyre.states.position,
                                                               self.tyre.road.dydx[idx])
+        def get_boundary_interp(self , penetration , terrain_radius):
+            if penetration < self.tyre.min_penetration or\
+                  terrain_radius < self.tyre.min_terrain_radius:
+                return 0.
+            if penetration > self.tyre.max_penetration:
+                return self.tyre.large_penetration_interpolator(terrain_radius)
+            if terrain_radius > self.tyre.max_terrain_radius:
+                return self.tyre.large_terrain_radius_interpolator(penetration)
+            return self.tyre.main_interpolator(penetration , terrain_radius)
         def get_forces_centre_point(self):
             if self.fit_deformation_old is None:
                 prev_centre_point_deformation = 0

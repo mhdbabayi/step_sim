@@ -117,6 +117,36 @@ def fit_quadratic(left_point:Vector2,
             -(xl**2*y0 - xr**2*y0 - xl**2*yr + xr**2*yl)/(xl*xr*(xl - xr)),
             (xl*y0 - xr*y0 - xl*yr + xr*yl)/(xl*xr*(xl - xr))])
     return p
-
-
+def get_equivalent_circle(p1:Vector2, p0:Vector2, p2:Vector2):
+    #takes three points and returns the curvature of circle that passes through the three points
+    # and a vector connecting the centre of the circle to the p0
+    # if the points are on a straight line (withing tolerance) return 0 for circle curvature and 
+    # normal to the line for vector 
+    chord_right = p2 - p0
+    chord_left = p1 - p0 
+    # find if surface is flat
+    if (1 - np.abs(chord_right.dot(chord_left)/(chord_left.magnitude()*chord_right.magnitude()))) < 0.01:
+        curvature = 0
+        normal = Vector2(-chord_right.y , chord_right.x)
+        return curvature , normal
+    middle_point_right = p0 + chord_right/2
+    middle_point_left = p0 + chord_left/2
+    #lines connecting centre to middle of the chords
+    radius_slope_right = Vector2(-chord_right.y , chord_right.x)
+    radius_slope_left = Vector2(-chord_left.y , chord_left.x)
+    # find intersection
+    A = np.array([[chord_right.x , chord_right.y], 
+                 [chord_left.x , chord_left.y]])
+    b = np.array([middle_point_right.dot(chord_right), middle_point_left.dot(chord_left)])
+    centre_x , centre_y = np.linalg.solve(A , b)
+    circle_centre = Vector2(centre_x , centre_y)
+    curvature = 1/((p0 - circle_centre).magnitude())
+    normal = (p0 - circle_centre).normalized()
+    return curvature , normal
+def get_circle_tangent_2points(tangent:Vector2,
+                               p0:Vector2,
+                               p1:Vector2):
+    normal = tangent.cross().normalized()
+    curvature = 2*(p1-p0).dot(normal)/(p1-p0).magnitude_squared()
+    return curvature, normal
 
