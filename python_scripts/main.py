@@ -11,7 +11,7 @@ tyre_radius = 0.788/2
 initial_x = 2.5 - tyre_radius
 sprung_mass = 700
 unsprung_mass = 50
-initial_y = tyre_radius - (sprung_mass + unsprung_mass)*10/(flx.Tyre_Continous.lump_stiffness)
+initial_y = tyre_radius - (sprung_mass + unsprung_mass)*10/(flx.ContinousTyre.lump_stiffness)
 # defining sim objects, all moving objects inherit from rigid body
 
 road = flx.Road(
@@ -20,7 +20,7 @@ road = flx.Road(
                 step_profile_phase=np.pi,
                 high_res=True
                 )
-tyre = flx.Tyre_Continous(initial_x=2.2,
+tyre = flx.ContinousTyre(initial_x=2.2,
                           initial_y=initial_y+0.03,
                           boundary_condition_file="./step_sim/beta_5.mat",
                           mass=unsprung_mass,

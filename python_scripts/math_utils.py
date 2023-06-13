@@ -1,5 +1,7 @@
 import numpy as np
 from euclid3 import Vector2
+from scipy import io
+from scipy import interpolate
 
 def intersection(p1, p2, P1, P2):
     x0, y0 = p1
@@ -81,27 +83,81 @@ def polar_second_derivative(point:Vector2, dy , ddy):
                   (y*dy + x)*(dy*dx_dtheta + dydx_dtheta*x - dy_dtheta)) * r/(x*dy - y)**2\
                    +dr_dtheta*(y*dy  +x)/(x*dy - y)
     return ddr_dtheta
-def beam_solution(beta,theta,boundary_deformation, boundary_derivative, theta0 = None):
-    A = boundary_deformation
-    B = (boundary_derivative/beta + boundary_deformation)
-    if theta0 is not None:
-        A = np.exp(-beta*theta0)*(
-            A * np.cos(beta*theta0) + B * np.sin(beta*theta0))
-        B = np.exp(-beta*theta0)*(
-            A * np.sin(beta*theta0) + B * np.cos(beta*x0))
-    return np.exp(-beta*theta)*(A*np.cos(beta*theta) + B*np.sin(beta*theta))    
-def beam_force_integral(beta, boundary_deformation, boundary_derivative):
-    # radial force: 
-    # integral exp(-beta*theta)*(A*cos(beta*theta) + B*sin(beta*theta))*cos(theta)
-    # theta from 0 to infinity with a positive beta
-    # tangential force: 
-    #integral exp(-beta*theta)*(A*cos(beta*theta) + B*sin(beta*theta))*sin(theta)
-    # theta from 0 to infinity with a positive beta
-    A = boundary_deformation
-    B = boundary_derivative/beta + boundary_deformation
-    radial_force = beta*(2*(A + B)*beta**2 + A - B)/(4*beta**4+1)
-    tangential_force = (A + 2*b*beta**2)/(4*beta**4+1)
-    return radial_force , tangential_force
+class BeamTyre:
+    def __init__(self,
+                 beta,
+                 tyre_radius,
+                 boundary_theta_map_file:str,
+                 theta_resolution_deg = 1,
+                 exp_multiplier_cutoff = 0.01) -> None:
+        self.beta = beta
+        self.tyre_radius = tyre_radius
+        assert (exp_multiplier_cutoff < 1) and (exp_multiplier_cutoff > 0)
+        max_theta = np.rad2deg(np.log(exp_multiplier_cutoff)/(-beta))
+        self.profile_theta = np.arange(start=np.deg2rad(theta_resolution_deg),
+                                       stop=max_theta,
+                                       step=np.deg2rad(theta_resolution_deg))
+        self.beam_solution = lambda A, B:\
+            np.exp(-self.beta*self.profile_theta)*(
+            A*np.cos(beta*self.profile_theta) + B*np.sin(beta*self.profile_theta))
+        self.boundary_interpolator :interpolate.RegularGridInterpolator = None
+        self.terrain_radius_grid = None
+        self.penetration_grid = None
+        self.setup_interpolator(boundary_theta_map_file)  
+    def get_profile(self, penetration, terrain_radius):
+        # based on calculations in matlab file 
+        theta0 = self.get_boundary_theta(penetration , terrain_radius)
+        w0 = self.get_initial_displacement()
+        dw0 = self.get_initial_slope(terrain_radius, penetration, theta0, w0)
+        return self.profile_theta + theta0, self.beam_solution(A = w0 , B = w0 + dw0/self.beta)
+    def force_integral(beta, w0, dw0):
+        # radial force: 
+        # integral exp(-beta*theta)*(A*cos(beta*theta) + B*sin(beta*theta))*cos(theta)
+        # theta from 0 to infinity with a positive beta
+        # tangential force: 
+        #integral exp(-beta*theta)*(A*cos(beta*theta) + B*sin(beta*theta))*sin(theta)
+        # theta from 0 to infinity with a positive beta
+        A = w0
+        B = dw0/beta + w0
+        radial_force = beta*(2*(A + B)*beta**2 + A - B)/(4*beta**4+1)
+        tangential_force = (A + 2*B*beta**2)/(4*beta**4+1)
+        return radial_force , tangential_force
+    def get_initial_displacement(self, penetration, terrain_radius, theta0):
+        tyre_height = self.tyre_radius - penetration
+        alpha = np.arcsin((1 + tyre_height/terrain_radius)*np.sin(theta0)) - theta0
+        centre_distance = self.tyre_radius + terrain_radius - penetration
+        return self.tyre_radius - np.sqrt(centre_distance**2 + terrain_radius**2 -\
+                                        2*centre_distance*terrain_radius*np.cos(alpha))
+    def get_initial_slope(self,penetration, terrain_radius, theta0, w0):
+        tyre_height = self.tyre_radius - penetration
+        alpha = np.arcsin((1 + tyre_height/terrain_radius)*np.sin(theta0)) - theta0
+        centre_distance = self.tyre_radius + terrain_radius - penetration
+        r = self.tyre_radius
+        D = centre_distance
+        p = penetration
+        R = self.tyre_radius
+        u = 1 + (tyre_height)/terrain_radius
+        return -((u*D*r*np.cos(theta)*np.sin(alpha))/(np.sqrt(1 - (u*np.sin(theta))**2)) - 1)/w0
+    def setup_interpolator(self,file_name):
+        matfile_content = io.loadmat(file_name)
+        self.penetration_grid = matfile_content["penetration_num"][0]
+        self.terrain_radius_grid = matfile_content["terrain_radius_num"][0]
+        separation_theta = matfile_content["fitted_results"]
+        self.boundary_interpolator = interpolate.RegularGridInterpolator(points= (self.penetration_grid,
+                                                                                  self.terrain_radius_grid),
+                                                                          data= separation_theta,
+                                                                          method="linear")
+    def get_boundary_theta(self, penetration, terrain_radius):
+        # clip within range
+        corrected_penetration = np.max(self.penetration_grid[0],
+                                       np.min(self.penetration_grid[-1], penetration))
+        corrected_terrain_radius = np.max(self.terrain_radius_grid[0],
+                                          np.min(self.terrain_radius_grid[-1], terrain_radius))
+        return self.boundary_interpolator((corrected_penetration,
+                                           corrected_terrain_radius))
+    def __call__(self, penetration , terrain_radius):
+        return self.get_profile(penetration, terrain_radius)
+
 def fit_quadratic(left_point:Vector2,
                   right_point:Vector2,
                   y0:float) -> np.polynomial.Polynomial:
@@ -148,5 +204,5 @@ def get_circle_tangent_2points(tangent:Vector2,
                                p1:Vector2):
     normal = tangent.cross().normalized()
     curvature = 2*(p1-p0).dot(normal)/(p1-p0).magnitude_squared()
-    return curvature, normal
+    return curvature
 
