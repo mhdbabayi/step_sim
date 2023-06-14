@@ -1,15 +1,14 @@
+cos(alpha)*((D*cos(theta))/(R*(1 - (D^2*sin(theta)^2)/R^2)^(1/2)) - 1)
+
 %%
 clear
 clc
-syms r  R p theta u
-D = r + R - p;
-alpha = asin((1 + (r - p)/R)*sin(theta)) - theta;
-w0 = r - sqrt(r^2 + D^2 - 2*r*D*cos(alpha));
-dw0 = diff(w0 , theta);
-dw_simple = subs(dw0, ((r - p)/R + 1) , "u");
-dw_simple = subs(dw_simple , asin(u*sin(theta)) - theta, "alpha" );
-dw_simple = subs(dw_simple , (R - p + r) , "D");
-pretty(dw_simple)
+syms D R r theta
+
+alpha = asin((D/R)*sin(theta)) - theta;
+w0 = r - R*(sin(alpha)/sin(theta));
+d1 = diff(sin(alpha) , theta);
+subs(d1 , asin(D*sin(theta)/R) - theta, 'alpha')
 %%
 syms theta tyre_radius R tyre_centre_height  beta theta0 gamma r G
 syms theta 

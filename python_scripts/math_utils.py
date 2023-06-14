@@ -83,6 +83,7 @@ def polar_second_derivative(point:Vector2, dy , ddy):
                   (y*dy + x)*(dy*dx_dtheta + dydx_dtheta*x - dy_dtheta)) * r/(x*dy - y)**2\
                    +dr_dtheta*(y*dy  +x)/(x*dy - y)
     return ddr_dtheta
+
 class BeamTyre:
     def __init__(self,
                  beta,
@@ -93,10 +94,11 @@ class BeamTyre:
         self.beta = beta
         self.tyre_radius = tyre_radius
         assert (exp_multiplier_cutoff < 1) and (exp_multiplier_cutoff > 0)
-        max_theta = np.rad2deg(np.log(exp_multiplier_cutoff)/(-beta))
-        self.profile_theta = np.arange(start=np.deg2rad(theta_resolution_deg),
+        max_theta = np.max((np.log(exp_multiplier_cutoff)/(-beta) , np.deg2rad(90)))
+        self.theta_resolution = np.deg2rad(theta_resolution_deg)
+        self.profile_theta = np.arange(start=self.theta_resolution,
                                        stop=max_theta,
-                                       step=np.deg2rad(theta_resolution_deg))
+                                       step=self.theta_resolution)
         self.beam_solution = lambda A, B:\
             np.exp(-self.beta*self.profile_theta)*(
             A*np.cos(beta*self.profile_theta) + B*np.sin(beta*self.profile_theta))
@@ -107,8 +109,8 @@ class BeamTyre:
     def get_profile(self, penetration, terrain_radius):
         # based on calculations in matlab file 
         theta0 = self.get_boundary_theta(penetration , terrain_radius)
-        w0 = self.get_initial_displacement()
-        dw0 = self.get_initial_slope(terrain_radius, penetration, theta0, w0)
+        w0 = self.get_initial_displacement(penetration, terrain_radius, theta0)
+        dw0 = self.get_initial_slope(penetration, terrain_radius, theta0, w0)
         return self.profile_theta + theta0, self.beam_solution(A = w0 , B = w0 + dw0/self.beta)
     def force_integral(beta, w0, dw0):
         # radial force: 
@@ -132,12 +134,13 @@ class BeamTyre:
         tyre_height = self.tyre_radius - penetration
         alpha = np.arcsin((1 + tyre_height/terrain_radius)*np.sin(theta0)) - theta0
         centre_distance = self.tyre_radius + terrain_radius - penetration
-        r = self.tyre_radius
         D = centre_distance
-        p = penetration
-        R = self.tyre_radius
-        u = 1 + (tyre_height)/terrain_radius
-        return -((u*D*r*np.cos(theta)*np.sin(alpha))/(np.sqrt(1 - (u*np.sin(theta))**2)) - 1)/w0
+        R = terrain_radius
+        dsin_alpha_dtheta = np.cos(alpha)*(D*np.cos(theta0)/(R*np.cos(alpha+theta0)) -1)
+        return -R * (dsin_alpha_dtheta*np.sin(theta0) - np.cos(theta0)*np.sin(alpha))/\
+            np.sin(theta0)**2
+        #return -((u*D*r*np.cos(theta0)*np.sin(alpha))/(np.sqrt(1 - (u*np.sin(theta0))**2)) - 1)/\
+        #    (r - w0)
     def setup_interpolator(self,file_name):
         matfile_content = io.loadmat(file_name)
         self.penetration_grid = matfile_content["penetration_num"][0]
@@ -145,14 +148,14 @@ class BeamTyre:
         separation_theta = matfile_content["fitted_results"]
         self.boundary_interpolator = interpolate.RegularGridInterpolator(points= (self.penetration_grid,
                                                                                   self.terrain_radius_grid),
-                                                                          data= separation_theta,
+                                                                          values= separation_theta,
                                                                           method="linear")
     def get_boundary_theta(self, penetration, terrain_radius):
         # clip within range
-        corrected_penetration = np.max(self.penetration_grid[0],
-                                       np.min(self.penetration_grid[-1], penetration))
-        corrected_terrain_radius = np.max(self.terrain_radius_grid[0],
-                                          np.min(self.terrain_radius_grid[-1], terrain_radius))
+        corrected_penetration = np.max((self.penetration_grid[0],
+                                       np.min((self.penetration_grid[-1], penetration))))
+        corrected_terrain_radius = np.max((self.terrain_radius_grid[0],
+                                          np.min((self.terrain_radius_grid[-1], terrain_radius))))
         return self.boundary_interpolator((corrected_penetration,
                                            corrected_terrain_radius))
     def __call__(self, penetration , terrain_radius):

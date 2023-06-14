@@ -6,6 +6,7 @@ from matplotlib import pyplot as plt
 os.system("clear")
 from scipy import io
 # constants and initial values
+matlab_file_path = os.path.abspath("./step_sim/beta_5.mat")
 forward_speed = 1.9*12./7.
 tyre_radius = 0.788/2
 initial_x = 2.5 - tyre_radius
@@ -22,7 +23,7 @@ road = flx.Road(
                 )
 tyre = flx.ContinousTyre(initial_x=2.2,
                           initial_y=initial_y+0.03,
-                          boundary_condition_file="./step_sim/beta_5.mat",
+                          boundary_condition_file= matlab_file_path,
                           mass=unsprung_mass,
                           road=road,
                           free_radius=tyre_radius,
@@ -45,15 +46,15 @@ logged_data = []
 step = 0
 while tyre.states.position.x < 4:
     step += 1
+    plt.sca(Ax[0])
     st = time.time() # For timing the main operations
     # main dynamics updates, should really be done in a function
     # but because of the way the external forces are implemented, it's done 
     # explicityly here
-    plt.sca(Ax[0])
     q_car.update_states()
     tyre.update_states(-(q_car.spring_force + q_car.damper_force))
-    if np.mod(step , 50) == 0:
-        print(f'{1000*(time.time() - st)/50:.1f} ms/t {q_car.states.velocity.y:0.3f}')
+    if np.mod(step , 5) == 0:
+        print(f'{1000*(time.time() - st)/5:.1f} ms/t {q_car.states.velocity.y:0.3f}')
     # draw results
     for ax in Ax:
         ax.cla()
@@ -67,16 +68,18 @@ while tyre.states.position.x < 4:
     #           tyre.states.position.x + tyre.free_radius*1.5))
     # plt.ylim((tyre.states.position.y - tyre.free_radius*1.1, 
     #           q_car.states.position.y + tyre.free_radius*1.1))
-    plt.xlim((tyre.contacts[-1].centre_point.x - tyre.free_radius, tyre.contacts[-1].centre_point.x + tyre.free_radius))
-    plt.ylim((tyre.contacts[-1].centre_point.y - tyre.free_radius, tyre.contacts[-1].centre_point.y + tyre.free_radius))
+    if len(tyre.contacts) > 0:
+        plt.xlim((tyre.contacts[-1].centre_point().x - 2*tyre.free_radius, tyre.contacts[-1].centre_point().x + 2*tyre.free_radius))
+        plt.ylim((tyre.contacts[-1].centre_point().y - 2*tyre.free_radius, tyre.contacts[-1].centre_point().y + 2*tyre.free_radius))
 
     plt.sca(Ax[1])
     for c in tyre.contacts:
         c.draw_pressure()
     plt.pause(0.1)
-    if step > 10:
+    if step > 0:
         while not plt.waitforbuttonpress():
             pass
+    [plt.sca(ax) for ax in Ax]
     #if np.mod(step , 50) == 0:
     #    plt.pause(0.01)
     logged_data.append([tyre.forces, tyre.external_forces, tyre.states.position])
