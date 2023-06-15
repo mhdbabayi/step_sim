@@ -378,11 +378,11 @@ class ContinousTyre(phsx.RigidBody):
             angle_step = self.tyre.beam.theta_resolution 
             contact_section_theta = np.arange(start = self.aft_theta_abs()[0] + angle_step,
                                               stop= self.fore_theta_abs()[0],
-                                              step = angle_step)
+                                              step = angle_step) - self.centre_point_angle()
             contact_section_deformation = ut.fit_quadratic(left_point = (contact_section_theta[0], self.aft_deformation_profile[0]),
                                                            right_point= (contact_section_theta[-1], self.fore_deformation_profile[0]),
                                                            y0 = self.centre_point_deformation())(contact_section_theta)
-            stacked_theta = np.hstack((np.flip(self.aft_theta_abs()), contact_section_theta, self.fore_theta_abs()))
+            stacked_theta = np.hstack((np.flip(self.aft_theta_abs()), contact_section_theta + self.centre_point_angle(), self.fore_theta_abs()))
             stacked_deformation = np.hstack((np.flip(self.aft_deformation_profile),
                                          contact_section_deformation,
                                          self.fore_deformation_profile))

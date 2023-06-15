@@ -137,6 +137,8 @@ class BeamTyre:
         D = centre_distance
         R = terrain_radius
         dsin_alpha_dtheta = np.cos(alpha)*(D*np.cos(theta0)/(R*np.cos(alpha+theta0)) -1)
+        if theta0 == 0:
+            return 0
         return -R * (dsin_alpha_dtheta*np.sin(theta0) - np.cos(theta0)*np.sin(alpha))/\
             np.sin(theta0)**2
         #return -((u*D*r*np.cos(theta0)*np.sin(alpha))/(np.sqrt(1 - (u*np.sin(theta0))**2)) - 1)/\
@@ -169,8 +171,11 @@ def fit_quadratic(left_point:Vector2,
     #assert left_point.x < 0 and right_point.x > 0
     (xl, yl) = left_point
     (xr , yr)= right_point
+    # TODO shouldn't have to deal with every condition separately
     if xl == xr:
         return np.polynomial.Polynomial([y0 , 0 , 0])
+    if np.abs(np.rad2deg(xl)) < 1 or np.abs(np.rad2deg(xr))<1:
+        return np.polynomial.polynomial.Polynomial([y0,(yr - yl)/(xr - xl)])
     p = np.polynomial.polynomial.Polynomial([
             y0,
             -(xl**2*y0 - xr**2*y0 - xl**2*yr + xr**2*yl)/(xl*xr*(xl - xr)),

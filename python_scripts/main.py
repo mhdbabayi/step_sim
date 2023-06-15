@@ -44,7 +44,7 @@ tyre.find_new_contacts()
 #for i in range(500): 
 logged_data = []   
 step = 0
-while tyre.states.position.x < 4:
+while tyre.states.position.x < 3:
     step += 1
     plt.sca(Ax[0])
     st = time.time() # For timing the main operations
