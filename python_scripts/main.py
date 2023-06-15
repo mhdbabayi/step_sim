@@ -1,6 +1,6 @@
 import flexring as flx
 import time
-import os
+import os, sys
 import numpy as np
 from matplotlib import pyplot as plt
 os.system("clear")
@@ -14,14 +14,14 @@ sprung_mass = 700
 unsprung_mass = 50
 initial_y = tyre_radius - (sprung_mass + unsprung_mass)*10/(flx.ContinousTyre.lump_stiffness)
 # defining sim objects, all moving objects inherit from rigid body
-
+DEBUG = sys.gettrace()
 road = flx.Road(
-                step_width=0.1,
-                step_height=0.2,
+                step_width=0.01,
+                step_height=0.08,
                 step_profile_phase=np.pi,
                 high_res=True
                 )
-tyre = flx.ContinousTyre(initial_x=2.2,
+tyre = flx.ContinousTyre(initial_x=1.5,
                           initial_y=initial_y+0.03,
                           boundary_condition_file= matlab_file_path,
                           mass=unsprung_mass,
@@ -35,8 +35,8 @@ q_car = flx.SprungMass(tyre_inst=tyre,
                        speed_x=forward_speed,
                        speed_y=0,
                        spring_neutral_length=1,
-                       natural_frequency_hz=2,
-                       damping_ratio=0.2
+                       natural_frequency_hz=0.5,
+                       damping_ratio=0.4
                        )
 qmain_fig, Ax = plt.subplots(2 , 1)
 tyre.find_new_contacts()
@@ -44,7 +44,11 @@ tyre.find_new_contacts()
 #for i in range(500): 
 logged_data = []   
 step = 0
-while tyre.states.position.x < 3:
+if DEBUG:
+    draw_frequency = 1
+else:
+    draw_frequency = 10
+while tyre.states.position.x < 4:
     step += 1
     plt.sca(Ax[0])
     st = time.time() # For timing the main operations
@@ -56,27 +60,23 @@ while tyre.states.position.x < 3:
     if np.mod(step , 5) == 0:
         print(f'{1000*(time.time() - st)/5:.1f} ms/t {q_car.states.velocity.y:0.3f}')
     # draw results
-    for ax in Ax:
-        ax.cla()
-    # Ax.cla()
-    tyre.draw()
-    q_car.draw()
-    plt.plot(road.x, road.y, color="brown")
-    plt.gca().set_aspect('equal')
-    plt.draw()
-    # plt.xlim((tyre.states.position.x - tyre.free_radius*1.1,
-    #           tyre.states.position.x + tyre.free_radius*1.5))
-    # plt.ylim((tyre.states.position.y - tyre.free_radius*1.1, 
-    #           q_car.states.position.y + tyre.free_radius*1.1))
-    if len(tyre.contacts) > 0:
-        plt.xlim((tyre.contacts[-1].centre_point().x - 2*tyre.free_radius, tyre.contacts[-1].centre_point().x + 2*tyre.free_radius))
-        plt.ylim((tyre.contacts[-1].centre_point().y - 2*tyre.free_radius, tyre.contacts[-1].centre_point().y + 2*tyre.free_radius))
+    if np.mod(step , draw_frequency) == 0:
+        for ax in Ax:
+            ax.cla()
+        # Ax.cla()
+        tyre.draw()
+        q_car.draw()
+        plt.plot(road.x, road.y, color="brown")
+        plt.gca().set_aspect('equal')
+        plt.xlim(tyre.states.position.x+1.2*tyre.free_radius*\
+                np.array((-1., 1.)))
+        plt.ylim((-0.1, q_car.states.position.y + tyre.free_radius))
+        plt.sca(Ax[1])
+        for c in tyre.contacts:
+            c.draw_pressure()
+        plt.pause(0.001)
 
-    plt.sca(Ax[1])
-    for c in tyre.contacts:
-        c.draw_pressure()
-    plt.pause(0.1)
-    if step > 0:
+    if DEBUG:
         while not plt.waitforbuttonpress():
             pass
     [plt.sca(ax) for ax in Ax]
@@ -92,5 +92,7 @@ position = np.array([v[2] for v in logged_data])
 io.savemat("/Users/mahdibabayi/beam_tyre/step_out.mat",
         {"position":position, "force": logged_forces,"suspension_forces":ex_forces})
 
+plt.figure()
 plt.plot(position[: , 0], logged_forces[: , 1])
-plt.show()
+plt.pause(2)
+plt.close('all')

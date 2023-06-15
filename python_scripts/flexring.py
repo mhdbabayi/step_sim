@@ -162,8 +162,8 @@ class SmartRaod(Road):
 
 class ContinousTyre(phsx.RigidBody):
     beta = 5
-    lump_stiffness = 100000.
-    lump_damping = 1000
+    lump_stiffness = 300000.
+    lump_damping = 50000
     element_stiffness = 300000
     element_damping = 1000
     
@@ -294,9 +294,12 @@ class ContinousTyre(phsx.RigidBody):
             self.prev_whole_deformation_profile = None
             self.prev_whole_theta_profile = None
 
+
             #hack
             self.normal_force = 0
             self.centre_migration_theta = None # movement of contact centre relative to previous step
+            self.prev_centre_point_deformation = 0
+
             self.update()
         def draw(self):
             plt.plot(self.centre_point().x , self.centre_point().y , "o")
@@ -343,10 +346,10 @@ class ContinousTyre(phsx.RigidBody):
             # TODO sign of tangent input acts strange
             fore_curvature = ut.get_circle_tangent_2points(tangent=-self.normal_vector().cross(),
                                                            p0= self.centre_point(),
-                                                           p1= self.collision.fore_point)
-            aft_curvature = ut.get_circle_tangent_2points(tangent=-self.normal_vector().cross(),
+                                                           p1= self.tyre.road.points[self.centre_point_idx + 15])
+            aft_curvature = ut.get_circle_tangent_2points(tangent=self.normal_vector().cross(),
                                                           p0 = self.centre_point(),
-                                                          p1 = self.collision.aft_point)
+                                                          p1= self.tyre.road.points[self.centre_point_idx - 15])
             # check for zero curvature
             if np.abs(fore_curvature) < 0.1:
                 self.fore_circle_radius = 10
@@ -361,9 +364,11 @@ class ContinousTyre(phsx.RigidBody):
             self.aft_circle_centre= self.centre_point() +\
                 self.aft_circle_radius*self.normal_vector().normalized()
         def get_forces_centre_point(self):
-            prev_centre_point_deformation = np.max(self.prev_whole_deformation_profile)
             spring_force = self.tyre.lump_stiffness * self.centre_point_deformation()
-            self.normal_force = spring_force 
+            damping_force = self.tyre.lump_damping *\
+                (self.centre_point_deformation() -\
+                  self.prev_centre_point_deformation)/self.tyre.simParameters["time_step"] 
+            self.normal_force = spring_force + damping_force
             #print(f'\tspring force: {spring_force:.1f}\n')
             return -self.normal_force*self.normal_vector().normalized()
         def set_deformation(self):
@@ -408,6 +413,7 @@ class ContinousTyre(phsx.RigidBody):
             idx_increment = np.int32(np.sign(
                     road_tangent_vector.dot(self.tyre.states.velocity)))
             prev_centre_idx = self.centre_point_idx
+            self.prev_centre_point_deformation = self.centre_point_deformation()
             while ((self.tyre.road.points[self.centre_point_idx] - self.tyre.states.position).magnitude() >\
                 (self.tyre.road.points[self.centre_point_idx+idx_increment] - self.tyre.states.position).magnitude()):
                 self.centre_point_idx += idx_increment

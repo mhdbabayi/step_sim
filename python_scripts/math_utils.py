@@ -211,6 +211,7 @@ def get_circle_tangent_2points(tangent:Vector2,
                                p0:Vector2,
                                p1:Vector2):
     normal = tangent.cross().normalized()
-    curvature = 2*(p1-p0).dot(normal)/(p1-p0).magnitude_squared()
-    return curvature
+    curvature = np.abs(2*(p1-p0).dot(normal)/(p1-p0).magnitude_squared())
+    curvature_sign = np.sign(tangent.dot(p1 - p0))
+    return curvature_sign * curvature
 
