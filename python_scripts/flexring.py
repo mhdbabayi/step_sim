@@ -181,6 +181,7 @@ class ContinousTyre(phsx.RigidBody):
         # nodes are only used for visualisation
         self.node_angles = np.deg2rad(np.linspace(0 , 360, 361)[0:-1])
         self.external_forces = 0
+        self.rigid_ring =ContinousTyre.RigidRing(tyre = self)
         self.beam = ut.BeamTyre(beta = self.beta,
                                 tyre_radius=self.free_radius,
                                 boundary_theta_map_file=boundary_condition_file)
@@ -220,6 +221,7 @@ class ContinousTyre(phsx.RigidBody):
         plt.gca().add_patch(circle_obj)
         for c in self.contacts:
             c.draw()
+        self.rigid_ring.draw()
     def update_forces(self, external_forces):
         super().update_forces(external_forces)
         for c in self.contacts:
@@ -228,6 +230,7 @@ class ContinousTyre(phsx.RigidBody):
         self.external_forces = external_forces
         super().update_states(external_forces)
         self.update_contacts()
+        self.rigid_ring.update_states()
     def update_contacts(self):
         if len(self.contacts) == 0:
             start_idx = 0
@@ -261,8 +264,8 @@ class ContinousTyre(phsx.RigidBody):
         def __init__(self,
                      tyre,
                      collision):
-            self.tyre = tyre
-            self.collision = collision
+            self.tyre: ContinousTyre = tyre
+            self.collision: ContinousTyre.Collision = collision
             self.centre_point_idx = np.argmin((p - self.tyre_states.position).magnitude() for p in\
                                                self.tyre.road.points[collision.start_road_idx:collision.end_road_idx])+\
                                                   collision.start_road_idx
@@ -429,8 +432,35 @@ class ContinousTyre(phsx.RigidBody):
             if self.prev_whole_theta_profile is None:
                 self.prev_whole_deformation_profile = self.whole_deformation_profile
                 self.prev_whole_theta_profile = self.whole_theta_profile - self.centre_migration_theta
+    class RigidRing(phsx.RigidBody):
+        def __init__(self,tyre,
+                     natural_freq_hz= 100,
+                      damping_ratio = 0.5):
+            super().__init__(mass= tyre.mass,
+                            initial_x= tyre.states.position.x,
+                            initial_y=tyre.states.position.y,
+                            initial_x_dot=tyre.states.velocity.x,
+                            initial_y_dot=tyre.states.velocity.y,
+                            constraint_type= '100')
+            self.tyre:ContinousTyre = tyre
+            self.stiffness = 2*np.pi * natural_freq_hz**2*self.mass
+            self.damping = 2*2*np.pi*natural_freq_hz* self.mass * damping_ratio
+            self.displacement_vector = lambda :\
+                self.states.position - self.tyre.states.position
+            self.velocity_vector = lambda :\
+                self.states.velocity - self.tyre.states.velocity
+            self.prev_displacement_vector = self.displacement_vector()
+        def update_forces(self, external_forces:Vector2 = Vector2(0 , 0)):
+            self.forces = -self.stiffness * self.displacement_vector() -\
+                            self.damping * self.velocity_vector()
 
-
+        def draw(self):
+            patch = patches.Circle(xy =(self.states.position),
+                                   radius =0.8*self.tyre.free_radius,
+                                   fill = False,
+                                   lw= 2, 
+                                   color = "red")
+            plt.gca().add_patch(patch)
 class SprungMass(phsx.RigidBody):
     def __init__(self,
                 tyre_inst:ContinousTyre,
@@ -454,8 +484,7 @@ class SprungMass(phsx.RigidBody):
         self.spring_preload = self.mass * 9.8
         self.spring_force = Vector2(0 ,self.spring_preload) 
         self.damper_force = Vector2(0 , 0)
-    def update_forces(self, external_forces):
-        super().update_forces()
+    def update_forces(self, external_forces:Vector2 = Vector2(0 ,0)):
         self.spring_force = Vector2(0 ,(self.spring_neutral_length - 
         (self.states.position.y - self.tyre_inst.states.position.y)) + self.spring_preload)
         self.damper_force = Vector2(0,(self.tyre_inst.states.velocity.y  - self.states.velocity.y) * self.damping_coefficient)
